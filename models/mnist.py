@@ -22,7 +22,7 @@ class MNISTData:
         - this will be used to determine when to do early-stopping
     - test data: held-out for meta-test
   """
-  def __init__(self, train, valid_ratio=0.5):
+  def __init__(self, train, valid_ratio=0.5, batch_size=128):
     assert isinstance(train, bool)
     self.train = train
     dataset = datasets.MNIST(
@@ -32,7 +32,13 @@ class MNISTData:
 
     if train:
       indices = list(range(len(dataset)))
-      train_ids = [:int((len(indices) * (1 - valid_ratio))]
+      train_data = dataset[:int((len(indices) * (1 - valid_ratio))]
+      valid_data = dataset[int((len(indices) * (1 - valid_ratio)):]
+
+      self.train_loader = torch.utils.data.DataLoader(
+        train_data, batch_size=
+      )
+
 
 
     if mode is 'test':
