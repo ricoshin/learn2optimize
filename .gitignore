@@ -1,9 +1,10 @@
-# Custom
+# Custom (wuhyun)
 /*.png
 /*.pdf
 ignore/
 mnist/
 result/
+/.ftpconfig
 
 
 # Byte-compiled / optimized / DLL files
