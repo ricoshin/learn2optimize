@@ -12,24 +12,47 @@ from models.sparse_func import SBLinear, UnifiedSBLinear
 C = utils.getCudaManager('default')
 
 class MNISTData:
-  def __init__(self, mode):
-    assert mode in ['train', 'valid', 'test']
-    train = False if mode == 'test' else True
+  """this class has to be re-initialized at every meta-optimization step.
+  Current data scheme is as follows:
+    - train data
+      - outer-train data(70%): shuffled at every meta-iteration
+        - inner-train data: for model objective w.r.t. theta. (50%)
+        - inner-valid data: for meta-optimizer objective w.r.t phi. (50%)
+      - outer-valid data(30%)
+        - this will be used to determine when to do early-stopping
+    - test data: held-out for meta-test
+  """
+  def __init__(self, train, valid_ratio=0.5):
+    assert isinstance(train, bool)
+    self.train = train
     dataset = datasets.MNIST(
         './mnist', train=train, download=True,
         transform=torchvision.transforms.ToTensor()
     )
-    indices = list(range(len(dataset)))
-    np.random.RandomState(10).shuffle(indices)
-    if mode == 'train':
-      indices = indices[:(len(indices) * 0.7)]
-    elif mode == 'valid':
-      indices = indices[len(indices) * 0.7:]1
-    import pdb; pdb.set_trace()
 
-    self.loader = torch.utils.data.DataLoader(
-        dataset, batch_size=128,
-        sampler=torch.utils.data.sampler.SubsetRandomSampler(indices))
+    if train:
+      indices = list(range(len(dataset)))
+      train_ids = [:int((len(indices) * (1 - valid_ratio))]
+
+
+    if mode is 'test':
+      pass
+    else:
+      indices = list(range(len(dataset)))
+      if mode == 'train':
+        dataset = dataset[:int((len(indices) * 0.7))]
+      elif mode == 'valid':
+        dataset = indices[int(len(indices) * 0.7):]
+      dataset = dataset[indices]
+
+      # np.random.RandomState(10).shuffle(indices)
+
+
+      self.loader = torch.utils.data.DataLoader(
+          dataset, batch_size=128,
+          sampler=torch.utils.data.sampler.SubsetRandomSampler(indices))
+
+    import pdb; pdb.set_trace()
 
     self.batches = []
     self.cur_batch = 0
