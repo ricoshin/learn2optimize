@@ -44,6 +44,7 @@ class MNISTData:
         - this will be used to determine when to do early-stopping
     - test data: held-out for meta-test
   """
+
   def __init__(self, outer_train_ratio=0.7, inner_train_ratio=0.5,
                batch_size=128):
     self.batch_size = batch_size
