@@ -62,11 +62,8 @@ class Optimizer(nn.Module):
     assert mode in ['train', 'valid', 'test']
     if mode == 'train':
       self.train()
-      # data.new_train_data()
-      # inner_data = data.loaders['inner_train']
-      # outer_data = data.loaders['inner_valid']
-      inner_data = data.loaders['train']
-      # outer_data = inner_data
+      inner_data = data.loaders['inner_train']
+      outer_data = data.loaders['inner_valid']
     elif mode == 'valid':
       self.eval()
       inner_data = data.loaders['valid']
@@ -96,14 +93,13 @@ class Optimizer(nn.Module):
     iter_watch = utils.StopWatch('optim_iteration')
     for iteration in iter_pbar:
       iter_watch.touch()
-      data_ = inner_data.load()
       if mode == 'train':
         model = C(model_cls(params=batch_arg.params))
-        loss = model(*data_)
+        loss = model(*outer_data.load())
         unroll_losses += loss
 
       model_detached = C(model_cls(params=batch_arg.params.detach()))
-      loss_detached = model_detached(*data_)
+      loss_detached = model_detached(*inner_data.load())
       # if mode == 'train':
       #   assert loss == loss_detached
       loss_detached.backward()

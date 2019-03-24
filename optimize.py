@@ -35,8 +35,7 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module, n_epoch=20,
     writer = SummaryWriter(os.path.join(save_dir, name))
   #TODO: handle variable arguments according to different neural optimziers
 
-  meta_optim = torch.optim.Adam(
-    optimizer.parameters(), lr=lr, weight_decay=1e-4)
+  meta_optim = torch.optim.Adam(optimizer.parameters(), lr=lr, weight_decay=1e-4)
   data = data_cls()
   best_params = None
   best_valid_loss = 999999
