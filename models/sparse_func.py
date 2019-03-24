@@ -117,7 +117,7 @@ class UnifiedSBLinear(Function):
           pass
         else:
           dw = w.new(w.size()).zero_().index_copy_(
-            -1, retain_index, torch.mm(x.t(), pdy))
+              -1, retain_index, torch.mm(x.t(), pdy))
     else:
       raise Exception(f"Unknown backprop_mode: {self.backprop_mode}")
 
