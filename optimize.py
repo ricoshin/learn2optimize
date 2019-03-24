@@ -36,7 +36,7 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module, n_epoch=20,
   #TODO: handle variable arguments according to different neural optimziers
 
   meta_optim = torch.optim.Adam(optimizer.parameters(), lr=lr, weight_decay=1e-4)
-  dataset = data_cls(mode='train')
+  data = data_cls()
   best_params = None
   best_valid_loss = 999999
   result_dict = ResultDict()
@@ -47,8 +47,8 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module, n_epoch=20,
     result_dict = ResultDict()
 
     for j in train_pbar:
-      result_dict_ = optimizer.meta_optimize(
-          meta_optim, data_cls, model_cls, optim_it, unroll, out_mul, 'train')
+      result_dict_ = optimizer.meta_optimize(meta_optim, data,
+        model_cls, optim_it, unroll, out_mul, 'train')
       iter_loss = result_dict_['loss'].sum()
       result_dict.append(test_num=j, loss_ever=iter_loss, **result_dict_)
       train_pbar.set_description(f'train[loss:{iter_loss:10.3f}]')
@@ -59,7 +59,7 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module, n_epoch=20,
 
     for j in valid_pbar:
       result_dict_ = optimizer.meta_optimize(
-        meta_optim, data_cls, model_cls, optim_it, unroll, out_mul, False)
+        meta_optim, data, model_cls, optim_it, unroll, out_mul, 'valid')
       iter_loss = result_dict_['loss'].sum()
       result_dict.append(test_num=j, loss_ever=iter_loss, **result_dict_)
       valid_pbar.set_description(f'valid[loss:{iter_loss:10.3f}]')
@@ -97,7 +97,7 @@ def test_neural(name, save_dir, learned_params, data_cls, model_cls,
 
   for i in pbar:
     result_dict_ = optimizer.meta_optimize(
-      meta_optim, data_cls, model_cls, optim_it, unroll, out_mul, False)
+      meta_optim, data, model_cls, optim_it, unroll, out_mul, 'test')
     result_dict.append(test_num=i, **result_dict_)
     loss_total = result_dict_['loss'].sum()
     pbar.set_description(f'test[loss:{loss_total:10.3f}]')

@@ -111,14 +111,14 @@ _common_test_args = odict(n_test=200, optim_it=1000)
 ################################################################################
 
 # train_optimizers = []
-# train_optimizers = ['LSTM-base']
-train_optimizers = ['LSTM-ours']
+train_optimizers = ['LSTM-base']
+# train_optimizers = ['LSTM-ours']
 # train_optimizers = ['LSTM-base','LSTM-ours']
 # train_optimizers = ['LSTM-base', 'LSTM-ours', 'LSTM-ours']
 # test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM', 'LSTM-base', 'LSTM-ours')
 # test_optimizers = ['ADAM']
-# test_optimizers = ['LSTM-base']
-test_optimizers = ['LSTM-ours']
+test_optimizers = ['LSTM-base']
+# test_optimizers = ['LSTM-ours']
 # test_optimizers = ['LSTM-base','LSTM-ours', 'ADAM']
 # test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM', 'LSTM-base', 'LSTM-ours')
 # train_optimizers = ()

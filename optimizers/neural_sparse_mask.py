@@ -283,10 +283,26 @@ class Optimizer(nn.Module):
   def params(self, optimizer_params):
     optimizer_params.to_optimizer(self)
 
-  def meta_optimize(self, meta_optimizer, data_cls, model_cls, optim_it, unroll,
+  def meta_optimize(self, meta_optimizer, data, model_cls, optim_it, unroll,
                     out_mul, mode):
     assert mode in ['train', 'valid', 'test']
-    data = data_cls(mode=mode)
+    if mode == 'train':
+      self.train()
+      inner_data = data.loaders['inner_train']
+      outer_data = data.loaders['inner_valid']
+      drop_mode = 'soft_drop'
+    elif mode == 'valid':
+      self.eval()
+      inner_data = data.loaders['valid']
+      outer_data = None
+      drop_mode = 'hard_drop'
+    elif mode == 'eval':
+      self.eval()
+      inner_data = data.loaders['test']
+      outer_data = None
+      drop_mode = 'hard_drop'
+
+    # data = dataset(mode=mode)
     model = C(model_cls(sb_mode=self.sb_mode))
     model(*data.pseudo_sample())
     # layer_sz = sum([v for v in model.params.size().unflat(1, 'mat').values()])
@@ -294,13 +310,6 @@ class Optimizer(nn.Module):
         (self.n_layers, len(model.activations.mean(0)), self.hidden_sz)))
     update_states = C(OptimizerStates.initial_zeros(
         (self.n_layers, len(model.params), self.hidden_sz)))
-
-    if should_train:
-      self.train()
-      drop_mode = 'soft_drop'
-    else:
-      self.eval()
-      drop_mode = 'hard_drop'
 
     result_dict = ResultDict()
     unroll_losses = 0
@@ -317,14 +326,13 @@ class Optimizer(nn.Module):
     iter_watch = utils.StopWatch('optim_iteration')
     bp_watch = utils.StopWatch('bp')
     loss_decay = 1.0
+    
     for iteration in iter_pbar:
       iter_watch.touch()
-      data_ = data.sample()
-
       model_detached = C(model_cls(
         params=batch_arg.params.detach(),
         sb_mode=self.sb_mode))
-      loss_detached = model_detached(*data_)
+      loss_detached = model_detached(*inner_data.load())
       loss_detached.backward()
       # import pdb; pdb.set_trace()
       iter_pbar.set_description(f'optim_iteration[loss:{loss_detached}]')
@@ -352,12 +360,13 @@ class Optimizer(nn.Module):
       # loss_detached.backward()
       assert model_detached.params.grad is not None
 
-      if should_train:
+      if mode == 'train':
         model = C(model_cls(
           params=batch_arg.params,
           sb_mode=self.sb_mode))
-        loss = model(*data_)
-        assert loss == loss_detached
+
+        loss = model(*outer_data.load())
+        # assert loss == loss_detached
         if iteration == 1:
           initial_loss = loss
           loss_decay = 1.0
@@ -404,13 +413,13 @@ class Optimizer(nn.Module):
         else:
           raise RuntimeError('Unknown drop mode!')
         set.params(get.params() + updates)
-        # if not should_train:
+        # if not mode != 'train':
         # set.updates(updates)
       ##########################################################################
       batch_arg = batch_manager.batch_arg_to_set
       # updates = model.params.new_from_flat(updates)
 
-      if should_train and iteration % unroll == 0:
+      if mode == 'train' and iteration % unroll == 0:
         meta_optimizer.zero_grad()
         unroll_losses.backward()
         nn.utils.clip_grad_norm_(self.parameters(), 5)
@@ -420,14 +429,14 @@ class Optimizer(nn.Module):
       # if iteration == 1 or iteration % 10 == 0:
       #   import pdb; pdb.set_trace()
 
-      if not should_train or iteration % unroll == 0:
+      if not mode == 'train' or iteration % unroll == 0:
         mask_states.detach_()
         batch_arg.detach_()
         # model.params = model.params.detach()
         # update_states = update_states.detach()
       walltime += iter_watch.touch('interval')
       result_dict.append(loss=loss_detached)
-      if not should_train:
+      if not mode == 'train':
         result_dict.append(
           walltime=walltime,
           # **self.params_tracker(

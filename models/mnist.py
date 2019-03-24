@@ -1,19 +1,41 @@
+import itertools
 import math
+
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
-from torchvision import datasets
-from utils import utils
 from models.model_helpers import ParamsFlattener
 from models.sparse_func import SBLinear, UnifiedSBLinear
+from torch.utils import data
+from torchvision import datasets
+from utils import utils
 
 C = utils.getCudaManager('default')
 
+
+class DataloaderWrapper(object):
+  """Just a simple wrapper for dataloader to load data whenever neccessary
+  without forcibley using iterative loops.
+  """
+  def __init__(self, dataloader):
+    self.dataloader = dataloader
+    self.dataloader_iter = iter(dataloader)
+
+  def __len__(self):
+    return len(self.dataloader)
+
+  def load(self):
+    try:
+      return next(self.dataloader_iter)
+    except StopIteration:
+      self.dataloader_iter = iter(self.dataloader)
+      return next(self.dataloader_iter)
+
+
 class MNISTData:
-  """this class has to be re-initialized at every meta-optimization step.
-  Current data scheme is as follows:
+  """Current data scheme is as follows:
     - train data
       - outer-train data(70%): shuffled at every meta-iteration
         - inner-train data: for model objective w.r.t. theta. (50%)
@@ -22,64 +44,75 @@ class MNISTData:
         - this will be used to determine when to do early-stopping
     - test data: held-out for meta-test
   """
-  def __init__(self, train, valid_ratio=0.5, batch_size=128):
-    assert isinstance(train, bool)
-    self.train = train
-    dataset = datasets.MNIST(
-        './mnist', train=train, download=True,
-        transform=torchvision.transforms.ToTensor()
-    )
 
-    if train:
-      indices = list(range(len(dataset)))
-      train_data = dataset[:int((len(indices) * (1 - valid_ratio))]
-      valid_data = dataset[int((len(indices) * (1 - valid_ratio)):]
+  def __init__(self, outer_train_ratio=0.7, inner_train_ratio=0.5,
+               batch_size=128):
+    self.batch_size = batch_size
+    self.outer_train_ratio = outer_train_ratio
+    self.inner_train_ratio = inner_train_ratio
 
-      self.train_loader = torch.utils.data.DataLoader(
-        train_data, batch_size=
-      )
+    train_data = datasets.MNIST('./mnist', train=True, download=True,
+                                transform=torchvision.transforms.ToTensor())
+    test_data = datasets.MNIST('./mnist', train=False, download=True,
+                               transform=torchvision.transforms.ToTensor())
+    self.train_data, self.valid_data = self._random_split(
+        train_data, outer_train_ratio)
+    self.test_data = test_data
+    self.loaders = {}
+    self.iters = {}
+    self._initialize()
 
+  # def __get__(self, instance, owner):
+  #   return getattr(instance, 'loaders')
 
+  def _initialize(self):
+    attrs = ['train_data', 'valid_data', 'test_data']
+    assert all(hasattr(self, attr) for attr in attrs)
+    self.new_train_data()
+    self.new_valid_data()
+    self.new_test_data()
 
-    if mode is 'test':
-      pass
-    else:
-      indices = list(range(len(dataset)))
-      if mode == 'train':
-        dataset = dataset[:int((len(indices) * 0.7))]
-      elif mode == 'valid':
-        dataset = indices[int(len(indices) * 0.7):]
-      dataset = dataset[indices]
+  def new_train_data(self):
+    inner_train, inner_valid = self._random_split(
+        self.train_data, self.inner_train_ratio)
+    self.loaders['inner_train'] = self._get_wrapped_dataloader(
+      inner_train, self.batch_size)
+    self.loaders['inner_valid'] = self._get_wrapped_dataloader(
+      inner_valid, self.batch_size)
 
-      # np.random.RandomState(10).shuffle(indices)
+  def new_valid_data(self):
+    self.loaders['valid'] = self._get_wrapped_dataloader(
+      self.valid_data, self.batch_size)
 
+  def new_test_data(self):
+    self.loaders['test'] = self._get_wrapped_dataloader(
+      self.test_data, self.batch_size)
 
-      self.loader = torch.utils.data.DataLoader(
-          dataset, batch_size=128,
-          sampler=torch.utils.data.sampler.SubsetRandomSampler(indices))
+  def _random_split(self, dataset, ratio):
+    n_total = len(dataset)
+    n_a = int(n_total * ratio)
+    n_b = n_total - n_a
+    data_a, data_b = data.random_split(dataset, [n_a, n_b])
+    return data_a, data_b
 
-    import pdb; pdb.set_trace()
+  # def _fixed_split(self, dataset, ratio):
+  #   import pdb; pdb.set_trace()
+  #   data_a = dataset[int(len(dataset) * ratio):]
+  #   data_b = dataset[:int(len(dataset) * ratio)]
+  #   return data_a, data_b
 
-    self.batches = []
-    self.cur_batch = 0
+  def _get_wrapped_dataloader(self, dataset, batch_size):
+    sampler = data.sampler.RandomSampler(dataset, replacement=True)
+    loader = data.DataLoader(dataset, batch_size=batch_size, sampler=sampler)
+    return DataloaderWrapper(loader)
 
   def pseudo_sample(self):
     """return pseudo sample for checking activation size."""
     return (torch.zeros(1, 1, 28, 28), None)
 
-  def sample(self):
-    if self.cur_batch >= len(self.batches):
-      self.batches = []
-      self.cur_batch = 0
-      for b in self.loader:
-        self.batches.append(b)
-    batch = self.batches[self.cur_batch]
-    self.cur_batch += 1
-    return (batch[0], batch[1])
-
 
 class MNISTModel(nn.Module):
-  def __init__(self, input_size=28*28, layer_size=20, n_layers=1,
+  def __init__(self, input_size=28 * 28, layer_size=20, n_layers=1,
                sb_mode='none', params=None):
     super().__init__()
     # Sadly this network needs to be implemented without using the convenient pytorch
@@ -111,10 +144,11 @@ class MNISTModel(nn.Module):
         self._reset_parameters(params[f'mat_{i}'], params[f'bias_{i}'])
         inp_size = layer_size
 
-      params[f'mat_{n_layers}'] = torch.randn(inp_size, 10) * 0.001  # TODO:init
+      params[f'mat_{n_layers}'] = torch.randn(
+          inp_size, 10) * 0.001  # TODO:init
       params[f'bias_{n_layers}'] = torch.zeros(10)
       self._reset_parameters(
-        params[f'mat_{n_layers}'], params[f'bias_{n_layers}'])
+          params[f'mat_{n_layers}'], params[f'bias_{n_layers}'])
       self.params = ParamsFlattener(params)
       self.params.register_parameter_to(self)
 
@@ -122,6 +156,7 @@ class MNISTModel(nn.Module):
     self._activations = {}
     self.nonlinear = nn.Sigmoid()
     self.loss = nn.NLLLoss()
+
   # def all_named_parameters(self):
   #   return [(k, v) for k, v in self.params.dict.items()]
 
@@ -136,13 +171,12 @@ class MNISTModel(nn.Module):
   def apply_backprop_mask(self, mask, drop_mode='no_drop'):
     if self.sb_linear is None:
       raise RuntimeError("To apply sparse backprop mak, model has to be "
-        "feed-forwared first having sparse mode normal or unified!")
+                         "feed-forwared first having sparse mode normal or unified!")
     assert isinstance(mask, dict)
     assert drop_mode in ['no_drop', 'soft_drop', 'hard_drop']
     for k, v in self.sb_linear.items():
       #act_k = "_".join(['act', k.split('_')[1]])
       v.mask_backprop(mask[k], drop_mode)
-
 
   @property
   def activations(self):
@@ -179,7 +213,7 @@ class MNISTModel(nn.Module):
       elif self.sb_mode in ['normal', 'unified']:
         self.sb_linear[f'layer_{i}'] = self.sb_linear_cls(f'layer_{i}')
         inp = self.sb_linear[f'layer_{i}'](
-          inp, params[f'mat_{i}'], params[f'bias_{i}'])
+            inp, params[f'mat_{i}'], params[f'bias_{i}'])
 
       self._activations[f'layer_{i}'] = inp
       inp.retain_grad()

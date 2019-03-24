@@ -57,18 +57,26 @@ class Optimizer(nn.Module):
   def params(self, optimizer_params):
     optimizer_params.to_optimizer(self)
 
-  def meta_optimize(self, meta_optimizer, data_cls, model_cls, optim_it, unroll,
-                    out_mul, should_train=True):
-    data = data_cls(training=should_train)
+  def meta_optimize(self, meta_optimizer, data, model_cls, optim_it, unroll,
+                    out_mul, mode):
+    assert mode in ['train', 'valid', 'test']
+    if mode == 'train':
+      self.train()
+      inner_data = data.loaders['inner_train']
+      outer_data = data.loaders['inner_valid']
+    elif mode == 'valid':
+      self.eval()
+      inner_data = data.loaders['valid']
+      outer_data = None
+    elif mode == 'eval':
+      self.eval()
+      inner_data = data.loaders['test']
+      outer_data = None
+
     model = C(model_cls())
     optimizer_states = C(OptimizerStates.initial_zeros(
         size=(self.n_layers, len(model.params), self.hidden_sz),
         rnn_cell=self.rnn_cell))
-
-    if should_train:
-      self.train()
-    else:
-      self.eval()
 
     result_dict = ResultDict()
     unroll_losses = 0
@@ -85,16 +93,15 @@ class Optimizer(nn.Module):
     iter_watch = utils.StopWatch('optim_iteration')
     for iteration in iter_pbar:
       iter_watch.touch()
-      data_ = data.sample()
-      if should_train:
+      if mode == 'train':
         model = C(model_cls(params=batch_arg.params))
-        loss = model(*data_)
+        loss = model(*outer_data.load())
         unroll_losses += loss
 
       model_detached = C(model_cls(params=batch_arg.params.detach()))
-      loss_detached = model_detached(*data_)
-      if should_train:
-        assert loss == loss_detached
+      loss_detached = model_detached(*inner_data.load())
+      # if mode == 'train':
+      #   assert loss == loss_detached
       loss_detached.backward()
       assert model_detached.params.flat.grad is not None
       grad = model_detached.params.flat.grad
@@ -110,25 +117,25 @@ class Optimizer(nn.Module):
         updates, new_states = self(get.grad().detach(), get.states())
         set.states(new_states)
         set.params(get.params() + updates * 0.1)
-        if not should_train:
+        if not mode == 'train':
           set.updates(updates)
       ##########################################################################
       batch_arg = batch_manager.batch_arg_to_set
       # import pdb; pdb.set_trace()
-      if should_train and iteration % unroll == 0:
+      if mode == 'train' and iteration % unroll == 0:
         meta_optimizer.zero_grad()
         unroll_losses.backward()
         # nn.utils.clip_grad_norm_(self.parameters(), 10)
         meta_optimizer.step()
         unroll_losses = 0
 
-      if not should_train or iteration % unroll == 0:
+      if not mode == 'train' or iteration % unroll == 0:
         batch_arg.detach_()
         # model.params = model.params.detach()
         # optimizer_states = optimizer_states.detach()
       walltime += iter_watch.touch('interval')
       result_dict.append(loss=loss_detached)
-      if not should_train:
+      if not mode == 'train':
         result_dict.append(
           walltime=walltime,
           **self.params_tracker(
