@@ -1,23 +1,22 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from utils import utils
 from models.model_helpers import ParamsIndexTracker
-from optimizers.optim_helpers import (GradientPreprocessor, LSTMStates,
-                                      OptimizerStates, StatesSlicingWrapper,
-                                      OptimizerParams, BatchManagerArgument,
-                                      OptimizerBatchManager, DefaultIndexer)
+from optimizers.optim_helpers import (BatchManagerArgument, DefaultIndexer,
+                                      GradientPreprocessor, LSTMStates,
+                                      OptimizerBatchManager, OptimizerParams,
+                                      OptimizerStates, StatesSlicingWrapper)
 from tqdm import tqdm
+from utils import utils
 from utils.result import ResultDict
 from utils.torchviz import make_dot
-
 
 C = utils.getCudaManager('default')
 
 
 class Optimizer(nn.Module):
   def __init__(
-    self, preproc=False, hidden_sz=20, preproc_factor=10.0, rnn_cell='lstm'):
+          self, preproc=False, hidden_sz=20, preproc_factor=10.0, rnn_cell='lstm'):
     super().__init__()
     assert rnn_cell in ['lstm', 'gru']
     self.rnn_cell = rnn_cell
@@ -84,9 +83,9 @@ class Optimizer(nn.Module):
     update = C(torch.zeros(model.params.size().flat()))
 
     batch_arg = BatchManagerArgument(
-      params=model.params,
-      states=StatesSlicingWrapper(optimizer_states),
-      updates=update,
+        params=model.params,
+        states=StatesSlicingWrapper(optimizer_states),
+        updates=update,
     )
 
     iter_pbar = tqdm(range(1, optim_it + 1), 'optim_iteration')
@@ -111,7 +110,7 @@ class Optimizer(nn.Module):
       ##########################################################################
       indexer = DefaultIndexer(input=grad, shuffle=False)
       batch_manager = OptimizerBatchManager(
-        batch_arg=batch_arg, indexer=indexer)
+          batch_arg=batch_arg, indexer=indexer)
 
       for get, set in batch_manager.iterator():
         updates, new_states = self(get.grad().detach(), get.states())
@@ -137,10 +136,10 @@ class Optimizer(nn.Module):
       result_dict.append(loss=loss_detached)
       if not mode == 'train':
         result_dict.append(
-          walltime=walltime,
-          **self.params_tracker(
-            grad=grad,
-            update=batch_arg.updates,
-          )
+            walltime=walltime,
+            **self.params_tracker(
+                grad=grad,
+                update=batch_arg.updates,
+            )
         )
     return result_dict

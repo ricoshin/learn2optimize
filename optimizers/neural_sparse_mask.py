@@ -1,18 +1,18 @@
 import math
+
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from utils import utils
 from models.model_helpers import ParamsIndexTracker
-from optimizers.optim_helpers import (GradientPreprocessor, LSTMStates,
-                                      OptimizerStates, StatesSlicingWrapper,
-                                      OptimizerParams, BatchManagerArgument,
-                                      OptimizerBatchManager, DefaultIndexer)
+from optimizers.optim_helpers import (BatchManagerArgument, DefaultIndexer,
+                                      GradientPreprocessor, LSTMStates,
+                                      OptimizerBatchManager, OptimizerParams,
+                                      OptimizerStates, StatesSlicingWrapper)
 from tqdm import tqdm
+from utils import utils
 from utils.result import ResultDict
 from utils.torchviz import make_dot
-
 
 C = utils.getCudaManager('default')
 debug_sigint = utils.getDebugger('SIGINT')
@@ -21,96 +21,94 @@ debug_sigstp = utils.getDebugger('SIGTSTP')
 
 class LSTMCell(nn.Module):
 
-    """
-    An implementation of Hochreiter & Schmidhuber:
-    'Long-Short Term Memory' cell.
-    http://www.bioinf.jku.at/publications/older/2604.pdf
+  """
+  An implementation of Hochreiter & Schmidhuber:
+  'Long-Short Term Memory' cell.
+  http://www.bioinf.jku.at/publications/older/2604.pdf
 
-    """
+  """
 
-    def __init__(self, input_size, hidden_size, bias=True):
-        super(LSTMCell, self).__init__()
-        self.input_size = input_size
-        self.hidden_size = hidden_size
-        self.bias = bias
-        self.x2h = nn.Linear(input_size, 4 * hidden_size, bias=bias)
-        self.h2h = nn.Linear(hidden_size, 4 * hidden_size, bias=bias)
-        self.reset_parameters()
+  def __init__(self, input_size, hidden_size, bias=True):
+    super(LSTMCell, self).__init__()
+    self.input_size = input_size
+    self.hidden_size = hidden_size
+    self.bias = bias
+    self.x2h = nn.Linear(input_size, 4 * hidden_size, bias=bias)
+    self.h2h = nn.Linear(hidden_size, 4 * hidden_size, bias=bias)
+    self.reset_parameters()
 
-    def reset_parameters(self):
-        std = 1.0 / math.sqrt(self.hidden_size)
-        for w in self.parameters():
-            w.data.uniform_(-std, std)
+  def reset_parameters(self):
+    std = 1.0 / math.sqrt(self.hidden_size)
+    for w in self.parameters():
+      w.data.uniform_(-std, std)
 
-    def forward(self, x, hidden):
+  def forward(self, x, hidden):
 
-        hx, cx = hidden
+    hx, cx = hidden
 
-        x = x.view(-1, x.size(1))
+    x = x.view(-1, x.size(1))
 
-        gates = self.x2h(x) + self.h2h(hx)
+    gates = self.x2h(x) + self.h2h(hx)
 
-        gates = gates.squeeze()
+    gates = gates.squeeze()
 
-        ingate, forgetgate, cellgate, outgate = gates.chunk(4, 1)
+    ingate, forgetgate, cellgate, outgate = gates.chunk(4, 1)
 
-        ingate = F.sigmoid(ingate)
-        forgetgate = F.sigmoid(forgetgate)
-        cellgate = F.tanh(cellgate)
-        outgate = F.sigmoid(outgate)
+    ingate = F.sigmoid(ingate)
+    forgetgate = F.sigmoid(forgetgate)
+    cellgate = F.tanh(cellgate)
+    outgate = F.sigmoid(outgate)
 
+    cy = torch.mul(cx, forgetgate) + torch.mul(ingate, cellgate)
 
-        cy = torch.mul(cx, forgetgate) +  torch.mul(ingate, cellgate)
+    hy = torch.mul(outgate, F.tanh(cy))
 
-        hy = torch.mul(outgate, F.tanh(cy))
-
-        return (hy, cy)
+    return (hy, cy)
 
 
 class GRUCell(nn.Module):
 
-    """
-    An implementation of GRUCell.
+  """
+  An implementation of GRUCell.
 
-    """
+  """
 
-    def __init__(self, input_size, hidden_size, bias=True):
-        super(GRUCell, self).__init__()
-        self.input_size = input_size
-        self.hidden_size = hidden_size
-        self.bias = bias
-        self.x2h = nn.Linear(input_size, 3 * hidden_size, bias=bias)
-        self.h2h = nn.Linear(hidden_size, 3 * hidden_size, bias=bias)
-        self.reset_parameters()
+  def __init__(self, input_size, hidden_size, bias=True):
+    super(GRUCell, self).__init__()
+    self.input_size = input_size
+    self.hidden_size = hidden_size
+    self.bias = bias
+    self.x2h = nn.Linear(input_size, 3 * hidden_size, bias=bias)
+    self.h2h = nn.Linear(hidden_size, 3 * hidden_size, bias=bias)
+    self.reset_parameters()
 
-    def reset_parameters(self):
-        std = 1.0 / math.sqrt(self.hidden_size)
-        for w in self.parameters():
-            w.data.uniform_(-std, std)
+  def reset_parameters(self):
+    std = 1.0 / math.sqrt(self.hidden_size)
+    for w in self.parameters():
+      w.data.uniform_(-std, std)
 
-    def forward(self, x, h_old, mask=None):
+  def forward(self, x, h_old, mask=None):
 
-        x = x.view(-1, x.size(1))
-        gate_x = self.x2h(x)
-        gate_h = self.h2h(h_old)
+    x = x.view(-1, x.size(1))
+    gate_x = self.x2h(x)
+    gate_h = self.h2h(h_old)
 
-        gate_x = gate_x.squeeze()
-        gate_h = gate_h.squeeze()
+    gate_x = gate_x.squeeze()
+    gate_h = gate_h.squeeze()
 
-        x_r, x_z, x_h = gate_x.chunk(3, 1)
-        h_r, h_z, h_h = gate_h.chunk(3, 1)
+    x_r, x_z, x_h = gate_x.chunk(3, 1)
+    h_r, h_z, h_h = gate_h.chunk(3, 1)
 
+    r = torch.sigmoid(x_r + h_r)  # r
+    z = torch.sigmoid(x_z + h_z)  # z
+    h_new = torch.tanh(x_h + (r * h_h))  # h tilde
 
-        r = torch.sigmoid(x_r + h_r) # r
-        z = torch.sigmoid(x_z + h_z) # z
-        h_new = torch.tanh(x_h + (r * h_h)) # h tilde
-
-        if mask is None:
-          hy = z * h_old + (1 - z) * h_new
-        else:
-          hy = (1 - mask*(1 - z)) * h_old + mask*(1 - z) * h_new
-        #hy = newgate + inputgate * (hidden - newgate)
-        return hy
+    if mask is None:
+      hy = z * h_old + (1 - z) * h_new
+    else:
+      hy = (1 - mask * (1 - z)) * h_old + mask * (1 - z) * h_new
+    #hy = newgate + inputgate * (hidden - newgate)
+    return hy
 
 
 class RNNBase(nn.Module):
@@ -134,7 +132,7 @@ class RNNBase(nn.Module):
       self.preproc = [preproc] * input_sz
       if preproc:
         input_sz *= 2
-    module = rnn_cell(input_sz, hidden_sz) # mean, std
+    module = rnn_cell(input_sz, hidden_sz)  # mean, std
     self.add_module('rnn_0', module)
     self.rnn.append(module)
     for i in range(self.n_layers - 1):
@@ -172,17 +170,17 @@ class RNNBase(nn.Module):
 
 class MaskGenerator(RNNBase):
   def __init__(
-    self, input_sz=1, hidden_sz=20, preproc_factor=10.0, preproc=True,
-    n_layers=1, rnn_cell='gru', mask_type='hybrid'):
+          self, input_sz=1, hidden_sz=20, preproc_factor=10.0, preproc=True,
+          n_layers=1, rnn_cell='gru', mask_type='hybrid'):
     assert mask_type in ['normal', 'unified', 'hybrid']
     if mask_type in ['normal', 'hybrid']:
       out_sz = 2  # for beta & gamma
     elif mask_type in ['unified']:
       out_sz = 1  # for directly computed p
     super().__init__(
-      input_sz=input_sz, out_sz=out_sz, hidden_sz=hidden_sz,
-      preproc_factor=preproc_factor, preproc=preproc,
-      n_layers=n_layers, rnn_cell=rnn_cell)
+        input_sz=input_sz, out_sz=out_sz, hidden_sz=hidden_sz,
+        preproc_factor=preproc_factor, preproc=preproc,
+        n_layers=n_layers, rnn_cell=rnn_cell)
     self.mask_type = mask_type
     self.sigmoid = nn.Sigmoid()
     self.relu = nn.ReLU()
@@ -190,7 +188,7 @@ class MaskGenerator(RNNBase):
 
   def forward(self, activations, states, debug=False):
     mean = activations.abs().mean(0)
-    std =  activations.std(0)
+    std = activations.std(0)
     # local (layerwise) mean & std
     mean_l = activations.abs().mean().expand_as(mean)
     std_l = activations.std().expand_as(std)
@@ -211,7 +209,7 @@ class MaskGenerator(RNNBase):
       p_logit = output[:, 0]
       # l_logit = output[:, 1]
 
-    elif self.mask_type in ['normal', 'hybrid']: # NOTE: include l_logit!
+    elif self.mask_type in ['normal', 'hybrid']:  # NOTE: include l_logit!
       gamma = mean.new_from_flat(output[:, 0])
       beta = mean.new_from_flat(output[:, 1])
       mean = activations.mean(0)
@@ -225,7 +223,7 @@ class MaskGenerator(RNNBase):
     # lambda_ = self.sigmoid(l_logit).mean()
     # mask = probs
     mask = torch.distributions.relaxed_bernoulli.RelaxedBernoulli(
-      temperature=1, probs=probs).rsample()
+        temperature=1, probs=probs).rsample()
     # sparsity_loss = mask.norm(p=2) + probs.norm(p=1)
     sparsity_loss = probs.norm(p=1)
     if debug:
@@ -235,15 +233,15 @@ class MaskGenerator(RNNBase):
       # max = 0.01
       # print('out_lambda', lambda_)
       # print('applied_lambda', ((max - min) * lambda_ + min))
-      import pdb; pdb.set_trace()
-
+      import pdb
+      pdb.set_trace()
 
     if self.mask_type in ['normal']:
       mask = activations.new_from_flat(mask)
     elif self.mask_type in ['unified', 'hybrid']:
       mask = mean.new_from_flat(mask)
 
-    return mask, states, sparsity_loss#, lambda_
+    return mask, states, sparsity_loss  # , lambda_
 
 
 class Optimizer(nn.Module):
@@ -257,21 +255,21 @@ class Optimizer(nn.Module):
     self.hidden_sz = hidden_sz
     self.sb_mode = sb_mode
     self.mask_generator = MaskGenerator(
-      input_sz=6,
-      mask_type='unified',  # NOTE
-      hidden_sz=hidden_sz,
-      preproc_factor=preproc_factor,
-      preproc=preproc,
-      n_layers=n_layers,
-      rnn_cell=rnn_cell,
+        input_sz=6,
+        mask_type='unified',  # NOTE
+        hidden_sz=hidden_sz,
+        preproc_factor=preproc_factor,
+        preproc=preproc,
+        n_layers=n_layers,
+        rnn_cell=rnn_cell,
     )
     self.updater = RNNBase(
-      input_sz=1,
-      out_sz=1,
-      preproc_factor=preproc_factor,
-      preproc=preproc,
-      n_layers=n_layers,
-      rnn_cell=rnn_cell,
+        input_sz=1,
+        out_sz=1,
+        preproc_factor=preproc_factor,
+        preproc=preproc,
+        n_layers=n_layers,
+        rnn_cell=rnn_cell,
     )
     self.params_tracker = ParamsIndexTracker(n_tracks=10)
 
@@ -320,9 +318,9 @@ class Optimizer(nn.Module):
     update = C(torch.zeros(model.params.size().flat()))
 
     batch_arg = BatchManagerArgument(
-      params=model.params,
-      states=StatesSlicingWrapper(update_states),
-      updates=model.params.new_zeros(model.params.size()),
+        params=model.params,
+        states=StatesSlicingWrapper(update_states),
+        updates=model.params.new_zeros(model.params.size()),
     )
 
     iter_pbar = tqdm(range(1, optim_it + 1), 'optim_iteration')
@@ -333,8 +331,8 @@ class Optimizer(nn.Module):
     for iteration in iter_pbar:
       iter_watch.touch()
       model_detached = C(model_cls(
-        params=batch_arg.params.detach(),
-        sb_mode=self.sb_mode))
+          params=batch_arg.params.detach(),
+          sb_mode=self.sb_mode))
       loss_detached = model_detached(*inner_data.load())
       loss_detached.backward()
       # import pdb; pdb.set_trace()
@@ -347,16 +345,17 @@ class Optimizer(nn.Module):
         debug = False
 
       backprop_mask, mask_states, sparsity_loss = self.mask_generator(
-        activations=model_detached.activations.grad.detach(),
-        debug=debug,
-        states=mask_states)
+          activations=model_detached.activations.grad.detach(),
+          debug=debug,
+          states=mask_states)
 
       # if debug_sigstp.signal_on and (iteration == 1 or iteration % 10 == 0):
       #   mask_list.append(backprop_mask)
       #   import pdb; pdb.set_trace()
       # min = 0.001
       # max = 0.01
-      unroll_losses += sparsity_loss * 0.01 * loss_decay#* ((max - min) * lambda_ + min)
+      unroll_losses += sparsity_loss * 0.01 * \
+          loss_decay  # * ((max - min) * lambda_ + min)
       # import pdb; pdb.set_trace()
 
       # model_detached.apply_backprop_mask(backprop_mask.unflat, drop_mode)
@@ -365,8 +364,8 @@ class Optimizer(nn.Module):
 
       if mode == 'train':
         model = C(model_cls(
-          params=batch_arg.params,
-          sb_mode=self.sb_mode))
+            params=batch_arg.params,
+            sb_mode=self.sb_mode))
 
         loss = model(*outer_data.load())
         # assert loss == loss_detached
@@ -396,19 +395,20 @@ class Optimizer(nn.Module):
       ##########################################################################
       indexer = DefaultIndexer(input=grad, index=index, shuffle=False)
       batch_manager = OptimizerBatchManager(
-        batch_arg=batch_arg, indexer=indexer)
+          batch_arg=batch_arg, indexer=indexer)
 
       for get, set in batch_manager.iterator():
         inp = get.grad().detach()
         #inp = [get.grad().detach(), get.tag().detach()]
         if drop_mode == 'soft_drop':
-          updates, new_states = self.updater(inp, get.states())#, mask=get.mask())
+          updates, new_states = self.updater(
+              inp, get.states())  # , mask=get.mask())
           # if iteration == 100:
           #   import pdb; pdb.set_trace()
           #   aaa = get.states() *2
           updates = updates * out_mul * get.mask()
           set.states(get.states() * (1 - get.mask()) + new_states * get.mask())
-          #set.states(new_states)
+          # set.states(new_states)
         elif drop_mode == 'hard_drop':
           updates, new_states = self.updater(inp, get.states())
           updates = updates * out_mul
@@ -441,10 +441,10 @@ class Optimizer(nn.Module):
       result_dict.append(loss=loss_detached)
       if not mode == 'train':
         result_dict.append(
-          walltime=walltime,
-          # **self.params_tracker(
-          #   grad=grad,
-          #   update=batch_arg.updates,
-          # )
+            walltime=walltime,
+            # **self.params_tracker(
+            #   grad=grad,
+            #   update=batch_arg.updates,
+            # )
         )
     return result_dict
