@@ -3,9 +3,9 @@ from torch import nn
 try:
   from utils import utils
 except ModuleNotFoundError:
-  # when excuted as a main file utils module
+  # For execution as a __main__ file
   import sys
-  sys.path.append('../') # include parent dir in path
+  sys.path.append('../')
   from utils import utils
 
 
@@ -19,7 +19,7 @@ class MCdropBNN(nn.Module):
   values. And Posterior estimation is performed by test time MCdropout.
   """
   def __init__(self, hidden_sz=32, n_layers=1, out_temp=1e-3,
-    decay_values=[0.5, 0.9, 0.99, 0.999, 0.9999], batch_std_norm=False,
+    decay_values=[0.5, 0.9, 0.99, 0.999, 0.9999], batch_std_norm=True,
     dropout_rate=0.5):
     super().__init__()
     assert n_layers > 0
@@ -67,6 +67,7 @@ class MCdropBNN(nn.Module):
 
     x = torch.cat([x, self.momentum], 1)
 
+    # regularization(as in Metz et al.)
     if self.batch_std_norm:
       x = x.div(x.std(0, keepdim=True))
 
@@ -104,8 +105,9 @@ class MCdropBNN(nn.Module):
     mean = sum / n_samples
     mean_sq = sq_sum / n_samples
     var = (mean_sq - mean**2) * (n_samples) / (n_samples -1)
+    std = var.sqrt()
 
-    return mean, var
+    return mean, std
 
 
 def target_func(x):
@@ -143,14 +145,15 @@ def test():
   print('Test for MCdropBNN module.')
   batch_size = 128
   input_size = 2
-  input_scale = 1e-2
   training_step = 1000
   uncentainty_test_step = 10
+
+  # Bayesian MLP network
   bnn = MCdropBNN().cuda()
   print(bnn)
-  optim = torch.optim.SGD(bnn.parameters(), lr=0.1, weight_decay=1e-4)
 
   # minimize mse loss w.r.t an arbitrary function
+  optim = torch.optim.SGD(bnn.parameters(), lr=0.1, weight_decay=1e-4)
   for _ in range(training_step):
     x, y_label = sample_data(batch_size, input_size)
     y_pred = bnn(x)
@@ -170,17 +173,18 @@ def test():
     x_unseen, _ = sample_data_unseen(batch_size//2, input_size)
     x = torch.cat([x_seen, x_unseen], 0)
     y = bnn.new()(x)
-    mu, var = bnn.measure_uncertainty(x, 1000)
+    mu, sigma = bnn.measure_uncertainty(x, 1000)
     # print(f'[!] sample(seen): {y[:batch_size//2]}')
     # print(f'[!] sample(unseen): {y[batch_size//2:]}')
     print(f'[!] mu(seen): {mu[:batch_size//2].mean()}')
     print(f'[!] mu(unseen): {mu[batch_size//2:].mean()}')
-    print(f'[!] var(seen): {var[:batch_size//2].mean()}')
-    print(f'[!] var(unseen): {var[batch_size//2:].mean()}')
-    ratio = var[batch_size//2:].mean() / var[:batch_size//2].mean()
-    print(f'[!] uncertainty of unseen data is x{ratio} larger.')
+    print(f'[!] sigma(seen): {sigma[:batch_size//2].mean()}')
+    print(f'[!] sigma(unseen): {sigma[batch_size//2:].mean()}')
+    ratio = sigma[batch_size//2:].mean() / sigma[:batch_size//2].mean()
+    print(f'[!] uncertainty(sigma) of unseen data is x{ratio} larger.\n')
 
   print('End of test.')
+
 
 if __name__ == '__main__':
   test()
