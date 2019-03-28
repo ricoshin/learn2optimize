@@ -150,9 +150,10 @@ def test():
 
   # Bayesian MLP network
   bnn = MCdropBNN().cuda()
-  print(bnn)
+  print(bnn, '\n')
 
   # minimize mse loss w.r.t an arbitrary function
+  print('[!] Training BNN')
   optim = torch.optim.SGD(bnn.parameters(), lr=0.1, weight_decay=1e-4)
   for _ in range(training_step):
     x, y_label = sample_data(batch_size, input_size)
@@ -160,13 +161,15 @@ def test():
     loss = ((y_label - y_pred)**2).mean()
     loss.backward()
     optim.step()
+  print('[!] Done!\n')
 
   print(f'[!] Input size: {x.size()}')
   print(f'[!] Output size: {y_pred.size()}')
-  print(f'[!] Output values: {y_pred}')
+  print(f'[!] Output values: {y_pred}\n')
 
   # bnn.eval()  # uncomment this to test deterministic network
 
+  print('[!] Measuring uncertainty of seen & unseen data\n')
   # test uncertainty for seen and unseen data distribution
   for _ in range(uncentainty_test_step):
     x_seen, _ = sample_data(batch_size//2, input_size)
