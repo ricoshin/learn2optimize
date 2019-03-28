@@ -91,6 +91,7 @@ class MCdropBNN(nn.Module):
 
     return torch.exp(out_1) + out_2
 
+
   def measure_uncertainty(self, x, n_samples=1000):
     sum = 0
     sq_sum = 0
@@ -106,6 +107,7 @@ class MCdropBNN(nn.Module):
 
     return mean, var
 
+
 def target_func(x):
   assert isinstance(x, torch.Tensor)
   assert x.size(1) == 2
@@ -116,6 +118,7 @@ def target_func(x):
   noise = torch.zeros(y.size()).normal_(0.02).cuda()
   return y + noise
 
+
 def sample_data(batch_sz, input_sz):
   x = torch.cat([
     # torch.zeros(batch_sz//2, input_sz).uniform_(-1, 0),
@@ -125,6 +128,7 @@ def sample_data(batch_sz, input_sz):
   ], 0).cuda()
   return x, target_func(x)
 
+
 def sample_data_unseen(batch_sz, input_sz):
   x = torch.cat([
     # torch.zeros(batch_sz//2, input_sz).uniform_(-2, -1),
@@ -133,6 +137,7 @@ def sample_data_unseen(batch_sz, input_sz):
     torch.zeros(batch_sz//2, input_sz).uniform_(1, 2),
   ], 0).cuda()
   return x, target_func(x)
+
 
 def test():
   print('Test for MCdropBNN module.')
@@ -145,8 +150,7 @@ def test():
   print(bnn)
   optim = torch.optim.SGD(bnn.parameters(), lr=0.1, weight_decay=1e-4)
 
-  # optimize for mse loss for arbitrary label
-  # y_label = torch.rand(batch_size, 1).cuda()
+  # optimize for mse loss for an arbitrary function
   for _ in range(training_step):
     x, y_label = sample_data(batch_size, input_size)
     y_pred = bnn(x)
