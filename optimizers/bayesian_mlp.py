@@ -150,7 +150,7 @@ def test():
   print(bnn)
   optim = torch.optim.SGD(bnn.parameters(), lr=0.1, weight_decay=1e-4)
 
-  # optimize for mse loss for an arbitrary function
+  # minimize mse loss w.r.t an arbitrary function
   for _ in range(training_step):
     x, y_label = sample_data(batch_size, input_size)
     y_pred = bnn(x)
