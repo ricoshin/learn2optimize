@@ -1,19 +1,20 @@
 import copy
-import sys
+import importlib
 import os
+import sys
+
 import numpy as np
 import torch
-from utils import utils
 from models.mnist import MNISTData, MNISTModel
-from models.quadratic import QuadraticModel, QuadraticData
 from models.model_helpers import ParamsIndexTracker
-from optimizers import (neural_base, neural_sparse, neural_estim_sgd,
-                        neural_estim, neural_obsrv, neural_sparse_mask)
-
+from models.quadratic import QuadraticData, QuadraticModel
+from optimizers import (neural_base, neural_estim, neural_estim_sgd,
+                        neural_obsrv, neural_sparse, neural_sparse_mask)
+from tensorboardX import SummaryWriter
 from torch.optim import SGD, Adam, RMSprop
 from tqdm import tqdm
+from utils import utils
 from utils.result import ResultDict
-from tensorboardX import SummaryWriter
 
 C = utils.getCudaManager('default')
 tqdm.monitor_interval = 0
@@ -22,20 +23,26 @@ tqdm.monitor_interval = 0
 def _get_attr_by_name(name):
   return getattr(sys.modules[__name__], name)
 
+def _get_optim_by_name(name):
+  return importlib.import_module("optimizers." + name).Optimizer
 
 def train_neural(name, save_dir, data_cls, model_cls, optim_module, n_epoch=20,
                  n_train=20, n_valid=100, optim_it=100, unroll=20, lr=0.001,
                  preproc=False, out_mul=1.0, tf_write=True):
   data_cls = _get_attr_by_name(data_cls)
   model_cls = _get_attr_by_name(model_cls)
-  optim_cls = _get_attr_by_name(optim_module).Optimizer
+  optim_cls = _get_optim_by_name(optim_module)
 
-  optimizer = C(optim_cls(preproc=preproc))
+  optimizer = C(optim_cls())
   if tf_write and save_dir is not None:
     writer = SummaryWriter(os.path.join(save_dir, name))
-  #TODO: handle variable arguments according to different neural optimziers
+  # TODO: handle variable arguments according to different neural optimziers
 
-  meta_optim = torch.optim.Adam(optimizer.parameters(), lr=lr, weight_decay=1e-4)
+  lr=0.01
+  # meta_optim = torch.optim.SGD(optimizer.parameters(), lr)
+  meta_optim = torch.optim.Adam(
+      optimizer.parameters(), lr=lr)#, weight_decay=1e-4)
+  print(lr)
   data = data_cls()
   best_params = None
   best_valid_loss = 999999
@@ -48,7 +55,7 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module, n_epoch=20,
 
     for j in train_pbar:
       result_dict_ = optimizer.meta_optimize(meta_optim, data,
-        model_cls, optim_it, unroll, out_mul, 'train')
+                                             model_cls, optim_it, unroll, out_mul, 'train')
       iter_loss = result_dict_['loss'].sum()
       result_dict.append(test_num=j, loss_ever=iter_loss, **result_dict_)
       train_pbar.set_description(f'train[loss:{iter_loss:10.3f}]')
@@ -59,7 +66,7 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module, n_epoch=20,
 
     for j in valid_pbar:
       result_dict_ = optimizer.meta_optimize(
-        meta_optim, data, model_cls, optim_it, unroll, out_mul, 'valid')
+          meta_optim, data, model_cls, optim_it, unroll, out_mul, 'valid')
       iter_loss = result_dict_['loss'].sum()
       result_dict.append(test_num=j, loss_ever=iter_loss, **result_dict_)
       valid_pbar.set_description(f'valid[loss:{iter_loss:10.3f}]')
@@ -97,7 +104,7 @@ def test_neural(name, save_dir, learned_params, data_cls, model_cls,
 
   for i in pbar:
     result_dict_ = optimizer.meta_optimize(
-      meta_optim, data, model_cls, optim_it, unroll, out_mul, 'test')
+        meta_optim, data, model_cls, optim_it, unroll, out_mul, 'test')
     result_dict.append(test_num=i, **result_dict_)
     loss_total = result_dict_['loss'].sum()
     pbar.set_description(f'test[loss:{loss_total:10.3f}]')
@@ -137,15 +144,15 @@ def test_normal(name, save_dir, data_cls, model_cls, optim_cls, optim_args,
       walltime += iter_watch.touch('interval')
       iter_pbar.set_description(f'optim_iteration[loss:{loss:10.6f}]')
       result_dict_iter.append(
-        step_num=j, loss=loss, walltime=walltime,
-        **params_tracker(
-          grad=grad,
-          update=update,
-        ),
+          step_num=j, loss=loss, walltime=walltime,
+          **params_tracker(
+              grad=grad,
+              update=update,
+          ),
       )
     result_dict_test.append(test_num=i, **result_dict_iter)
     loss = result_dict_iter['loss'].sum()
-    tests_pbar.set_description(f'test[loss:{loss:10.3f}]') #, time:{time}')
+    tests_pbar.set_description(f'test[loss:{loss:10.3f}]')  # , time:{time}')
 
   return result_dict_test.save(name, save_dir)
 

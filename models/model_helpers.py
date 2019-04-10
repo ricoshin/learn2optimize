@@ -305,6 +305,11 @@ class ParamsFlattener(object):
       params._maybe_flat()
     return params
 
+  def new_from_unflat(self, dim=None, new_size=None):
+    assert (dim is not None) == (new_size is not None)
+    import pdb; pdb.set_trace()
+
+
   def size(self):
     return ParamsSize(self._shapes, self._is_flat)
 
@@ -345,7 +350,7 @@ class ParamsFlattener(object):
   def is_flat(self):
     return self._is_flat
 
-  # NOTE: Fix later!
+  # NOTE: Fix later!1
   def get_flat(self):
     if self._is_flat:
       return self._flat
@@ -407,38 +412,123 @@ class ParamsFlattener(object):
   def copy(self):
     return copy.deepcopy(self)
 
-  def expand_as(self, other):
-    return self.cond_expand_as(other, key_trans_func=lambda x: x)
+  # def expand_as(self, other):
+    # return self.cond_expand_as(other, key_trans_func=lambda x: x)
 
-  def expand_as_params(self, other):
-    def key_trans_func(key):
-      prefix, i = key.split('_')
-      if prefix in ['mat']:
-        return '_'.join(['layer', i])
-      else:
-        return None
-    return self.cond_expand_as(other, key_trans_func=key_trans_func)
+  def _default_key_trans_func(self, key):
+    # mat_0  ->  linear_0  (params ->  mask)
+    prefix, i = key.split('_')
+    return '_'.join(['layer', i])
+    # if prefix in ['mat']:
+    #   return '_'.join(['layer', i])
+    # else:
+    #   return None
 
-  def cond_expand_as(self, other, key_trans_func):
-    """To expand unflattend tensors(dict) as the ones of the other
-    ParamsFlattener complying with matching rule, which can be specified by
-    either key_trans_func or match_prefix argument, but not both.
-      key_trans_func: tran
-    """
+  def expand_as(self, other, key_trans_func=None):
+    if key_trans_func is None:
+      key_trans_func = self._default_key_trans_func
+      assert callable(key_trans_func)
+    def func(other):
+      key_translated = [key_trans_func(k) for k in other.keys()]
+      out_dict = {}
+      for i, (k_other, v_other) in enumerate(other.items()):
+        k_self = key_translated[i]
+        if k_self: # mat (copy the mask pattern along the column axis)
+          out_dict[k_other] = self.unflat[k_self].squeeze(0).expand_as(v_other)
+        else: # bias (no need to drop - fill ones)
+          out_dict[k_other] = v_other.new_ones(v_other.size())
+        # else:
+          # out_dict[k_other] = self.unflat[k_self].squeeze()
+      return out_dict
+    return self.apply_func_(func, other)
+
+  def masked_select(self, mask, key_trans_func=None):
+    if key_trans_func is None:
+      key_trans_func = self._default_key_trans_func
+      assert callable(key_trans_func)
+    def func(mask):
+      key_translated = [key_trans_func(k) for k in self.unflat.keys()]
+      out_dict = {}
+      for i, (k_self, v_self) in enumerate(self.unflat.items()):
+        k_mask = key_translated[i]
+        v_mask = mask[k_mask].byte()
+        import pdb; pdb.set_trace()
+        out_dict[k_mask] = self.unflat[k_self].masked_select(v_mask)
+      return out_dict
+
+  def sparse_update(self, mask, delta, key_trans_func=None):
+    assert isinstance(mask, ParamsFlattener)
+    assert isinstance(delta, ParamsFlattener)
+    if key_trans_func is None:
+      key_trans_func = self._default_key_trans_func
+      assert callable(key_trans_func)
+    last_layer = int([k for k in mask.unflat.keys()][-1].split('_')[1])
+
+    def func(mask, delta):
+      m_keys = [key_trans_func(k) for k in self.unflat.keys()]  # mask
+      p_keys = [k for k in self.unflat.keys()]  # params
+      out = {}
+      for m_key, p_key in zip(m_keys, p_keys):
+        p_name, p_layer = p_key.split('_')
+        p = self.unflat[p_key]
+        d = delta.unflat[p_key]
+        if int(p_layer) < last_layer:
+          m = mask[m_key].squeeze().nonzero().squeeze()
+          d_size = (d.size(0), p.size(1)) if p_name == 'mat' else p.size()
+          d_ = p.new(*d_size).zero_().index_copy_(-1, m, d)
+        else:  # do not prune the last units
+          d_ = d
+          # when mat_x, dim=1 / when bias_x, dim=0
+        if p_name == 'mat' and int(p_layer) > 0:
+          prev_m_key = key_trans_func(p_name + '_' + str(int(p_layer) - 1))
+          m = mask[prev_m_key].squeeze().nonzero().squeeze()
+          d_ = p.new(p.size()).zero_().index_copy_(0, m, d_)
+        out[p_key] = p + d_
+      return out
+
+    return self.apply_func_(func, mask, delta=delta)
+
+
+
+  def prune(self, mask, key_trans_func=None):
+    assert isinstance(mask, ParamsFlattener)
+    if key_trans_func is None:
+      key_trans_func = self._default_key_trans_func
+      assert callable(key_trans_func)
+    last_layer = int([k for k in mask.unflat.keys()][-1].split('_')[1])
+
+    def func(mask):
+      m_keys = [key_trans_func(k) for k in self.unflat.keys()]  # mask
+      p_keys = [k for k in self.unflat.keys()]  # params
+      # v_self = [v for v in self.unflat.values()]
+      out = {}
+      for m_key, p_key in zip(m_keys, p_keys):# range(len(self.unflat)):
+        p_name, p_layer = p_key.split('_')
+        p = self.unflat[p_key]
+        if int(p_layer) < last_layer:
+          m = mask[m_key].squeeze().nonzero().squeeze()
+          out[p_key] = p.index_select(-1, m)
+        else:  # do not prune the last units
+          out[p_key] = p
+          # when mat_x, dim=1 / when bias_x, dim=0
+        if p_name == 'mat' and int(p_layer) > 0:
+          prev_m_key = key_trans_func(p_name + '_' + str(int(p_layer) - 1))
+          m = mask[prev_m_key].squeeze().nonzero().squeeze()
+          if p_key in out.keys():
+            out[p_key] = out[p_key].index_select(0, m)
+          else:
+            out[p_key] = p.index_select(0, m)
+      return out
+
+    return self.apply_func_(func, mask)
+
+  def apply_func_(self, func, other, *args, **kwargs):
     assert isinstance(other, (ParamsFlattener, dict))
-    assert callable(key_trans_func)
-
     if isinstance(other, ParamsFlattener):
       other = other.unflat # as dict
     was_flat = self._flat
     self._maybe_unflat()
-    out_dict = {}
-    for k_other, v_other in other.items():
-      k_self = key_trans_func(k_other) #mat_0  ->  linear_0  (params ->  mask)
-      if k_self: # mat (copy the mask pattern along the column axis)
-        out_dict[k_other] = self.unflat[k_self].squeeze(0).expand_as(v_other)
-      else: # bias (no need to drop - fill ones)
-        out_dict[k_other] = v_other.new_ones(v_other.size())
+    out_dict = func(other, *args, **kwargs)
     if was_flat:
       self._maybe_flat()
     return ParamsFlattener(out_dict)
@@ -479,7 +569,70 @@ class ParamsFlattener(object):
     func = lambda t: torch.std(t, *args, **kwargs)
     return self.apply_func(func, inplace=False)
 
+  def sum(self, *args, **kwargs):
+    func = lambda t: torch.sum(t, *args, **kwargs)
+    return self.apply_func(func, inplace=False)
+
+  def topk_id(self, other, *args, **kwargs):
+    func = lambda inp, k: torch.topk(inp, k, *args, **kwargs)[1]
+    return self.apply_func(func, other, inplace=False)
+
+  def tsize(self, *args, **kwargs):
+    func = lambda t: t.size(*args, **kwargs)
+    return self.apply_func(func, inplace=False, as_dict=True)
+
+  def scatter_float_(self, dim, index, float_):
+    func = lambda inp, id: inp.scatter_(dim, id, float_)
+    return self.apply_func(func, index, inplace=False)
+
   # def mean_
+  #
+  # def translate_keys(self, other):
+  #   def key_trans_func(key):
+  #     prefix, i = key.split('_')
+  #     if prefix in ['mat']:
+  #       return '_'.join(['layer', i])
+  #     else:
+  #       return None
+  #   return self.translate_keys_with_func(other, key_trans_func=key_trans_func)
+  #
+  # def translate_keys_with_func(self, other, key_trans_func):
+  #   """To expand unflattend tensors(dict) as the ones of the other
+  #   ParamsFlattener complying with matching rule, which can be specified by
+  #   either key_trans_func or match_prefix argument, but not both.
+  #     key_trans_func: tran
+  #   """
+  #   assert isinstance(other, (ParamsFlattener, dict))
+  #   assert callable(key_trans_func)
+  #
+  #   if isinstance(other, ParamsFlattener):
+  #     other = other.unflat # as dict
+  #   # was_flat = self._flat
+  #   # self._maybe_unflat()
+  #   out_dict = {}
+  #   for k_other, v_other in other.items():
+  #     k_self = key_trans_func(k_other) #mat_0  ->  linear_0  (params ->  mask)
+  #     if k_self: # mat (copy the mask pattern along the column axis)
+  #       out_dict[k_other] = self.unflat[k_self].squeeze(0).expand_as(v_other)
+  #     else: # bias (no need to drop - fill ones)
+  #       out_dict[k_other] = v_other.new_ones(v_other.size())
+  #   if was_flat:
+  #     self._maybe_flat()
+  #   return ParamsFlattener(out_dict)
+  #
+  # def expand_as(self, other, key_trans_func=None):
+  #   def func(other):
+  #     out_dict = {}
+  #     for k_other, v_other in other.items():
+  #       k_self = key_trans_func(k_other) #mat_0  ->  linear_0  (params ->  mask)
+  #       if k_self: # mat (copy the mask pattern along the column axis)
+  #         out_dict[k_other] = self.unflat[k_self].squeeze(0).expand_as(v_other)
+  #       else: # bias (no need to drop - fill ones)
+  #         out_dict[k_other] = v_other.new_ones(v_other.size())
+  #     return
+  #
+
+
 
   def apply_op_with_other(self, op_name, other):
     assert isinstance(other, (ParamsFlattener, dict, int, float, torch.Tensor))
@@ -492,12 +645,12 @@ class ParamsFlattener(object):
     func = lambda t1, t2: getattr(torch, op_name)(t1, t2)
     return self.apply_func(func, other_as_dict, inplace=False)
 
-  def apply_func(self, func, other=None, inplace=False):
+  def apply_func(self, func, other=None, inplace=False, as_dict=False):
     if other is not None:
       assert isinstance(other, (ParamsFlattener, dict))
+      if isinstance(other, ParamsFlattener):
+        other = other.unflat # as dict
       assert self.unflat.keys() == other.keys()
-    if isinstance(other, ParamsFlattener):
-      other = other.unflat # as dict
 
     if not inplace:
       out_dict = {}
@@ -515,7 +668,10 @@ class ParamsFlattener(object):
     if inplace:
       return None
     else:
-      return ParamsFlattener(out_dict)
+      if as_dict:
+        return out_dict
+      else:
+        return ParamsFlattener(out_dict)
 
   def register_grad_cut_hook_(self):
     if self._grad_cut_hook_handle is not None:

@@ -73,7 +73,7 @@ class Optimizer(nn.Module):
       outer_data = None
 
     model = C(model_cls())
-    optimizer_states = C(OptimizerStates.initial_zeros(
+    optimizer_states = C(RNNStates.initial_zeros(
         size=(self.n_layers, len(model.params), self.hidden_sz),
         rnn_cell=self.rnn_cell))
 

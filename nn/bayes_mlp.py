@@ -15,7 +15,7 @@ class MCdropBNN(nn.Module):
   """This model is a Bayesian MLP optimizer based on simplified version
   of the one proposed in 'Understanding and correcting pathologies in the
   training of learned optimizers.(Metz et al.)', where it only incorporates
-  a few significant input features, such as momentums at different decaying
+  a few significant input features, such as momentums for different decaying
   values. And Posterior estimation is performed by test time MCdropout.
   """
   def __init__(self, hidden_sz=32, n_layers=1, out_temp=1e-3,
@@ -24,14 +24,15 @@ class MCdropBNN(nn.Module):
     super().__init__()
     assert n_layers > 0
     assert isinstance(decay_values, (list, tuple))
+
     self.input_sz = 2 + len(decay_values) # grad, weight, momentums
     self.output_sz = 2 # log learning rate, update direction
     self.hidden_sz = hidden_sz
     self.out_temp = out_temp
     self.decay_values = C(torch.tensor(decay_values))
     self.momentum = None
-    # self.momentum = [None for _ in range(decay_values)]
     self.batch_std_norm = batch_std_norm
+
     self.layers = nn.ModuleList()
     for i in range(n_layers + 1):
       input_sz = self.input_sz if i == 0 else hidden_sz

@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
 from models.model_helpers import ParamsFlattener
-from models.sparse_func import SBLinear, UnifiedSBLinear
+from models.meprop import SBLinear, UnifiedSBLinear
 from torch.utils import data
 from torchvision import datasets
 from utils import utils
@@ -32,6 +32,8 @@ class DataloaderWrapper(object):
     except StopIteration:
       self.dataloader_iter = iter(self.dataloader)
       return next(self.dataloader_iter)
+    except Exception:
+      import pdb; pdb.set_trace()
 
 
 class MNISTData:
@@ -114,7 +116,7 @@ class MNISTData:
 
 
 class MNISTModel(nn.Module):
-  def __init__(self, input_size=28 * 28, layer_size=20, n_layers=1,
+  def __init__(self, input_size=28 * 28, layer_size=500, n_layers=1,
                sb_mode='none', params=None):
     super().__init__()
     # Sadly this network needs to be implemented without using the convenient pytorch
@@ -212,8 +214,12 @@ class MNISTModel(nn.Module):
       if self.sb_mode == 'none':
         inp = torch.matmul(inp, params[f'mat_{i}'])
         inp = inp + params[f'bias_{i}']
+
       elif self.sb_mode in ['normal', 'unified']:
-        self.sb_linear[f'layer_{i}'] = self.sb_linear_cls(f'layer_{i}')
+        if i == len(params) - 1:
+          self.sb_linear[f'layer_{i}'] = self.sb_linear_cls(f'layer_{i}')#, k=-1)
+        else:
+          self.sb_linear[f'layer_{i}'] = self.sb_linear_cls(f'layer_{i}')
         inp = self.sb_linear[f'layer_{i}'](
             inp, params[f'mat_{i}'], params[f'bias_{i}'])
 
@@ -225,6 +231,7 @@ class MNISTModel(nn.Module):
       # if self.sb_mode in ['normal', 'unified']:
 
       i += 1
+
     if out is not None:
       inp = F.log_softmax(inp, dim=1)
       loss = self.loss(inp, C(out))
