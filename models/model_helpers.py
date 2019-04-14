@@ -488,8 +488,6 @@ class ParamsFlattener(object):
 
     return self.apply_func_(func, mask, delta=delta)
 
-
-
   def prune(self, mask, key_trans_func=None):
     assert isinstance(mask, ParamsFlattener)
     if key_trans_func is None:
@@ -547,6 +545,21 @@ class ParamsFlattener(object):
 
   def __truediv__(self, other):
     return self.div(other)
+
+  def __gt__(self, other):
+    return self.apply_op_with_other('gt', other)
+
+  def __lt__(self, other):
+    return self.apply_op_with_other('lt', other)
+
+  def __ge__(self, other):
+    return self.apply_op_with_other('ge', other)
+
+  def __le__(self, other):
+    return self.apply_op_with_other('le', other)
+
+  def __eq__(self, other):
+    return self.apply_op_with_other('eq', other)
 
   def add(self, other):
     return self.apply_op_with_other('add', other)

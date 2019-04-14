@@ -2,6 +2,7 @@ import torch
 from torch import nn
 import numpy as np
 from models.model_helpers import ParamsFlattener
+from nn.relaxed_bb import RelaxedBetaBernoulli
 try:
   from utils import utils
 except ModuleNotFoundError:
@@ -23,7 +24,7 @@ class FeatureGenerator(nn.Module):
     Outputs: feature for each coordinates
   """
   def __init__(self, hidden_sz=32, n_layers=1, batch_std_norm=True,
-    decay_values=[0.5, 0.9, 0.99, 0.999, 0.9999], dropout_rate=0.0):
+    decay_values=[0.5, 0.9, 0.99, 0.999, 0.9999], dropout_rate=0.5):
     super().__init__()
     assert n_layers > 0 # has to have at least single layer
     assert isinstance(decay_values, (list, tuple))
@@ -147,16 +148,20 @@ class MaskGenerator(nn.Module):
     self.hidden_sz = hidden_sz
     self.lambda_g = None
     self.lambda_l = None
-    self.init_lambada = 1e-3 * (-1)
+
     self.nonlinear = nn.Tanh()
     self.eyes = None
     self.ones = None
     self.out_layers = nn.ModuleList()
     for i in range(n_layers):
-      output_sz = 3 if (i == n_layers - 1) else hidden_sz
+      output_sz = 4 if (i == n_layers - 1) else hidden_sz
+      # a, b, lambda_g, lambda_l
       self.out_layers.append(nn.Linear(hidden_sz, output_sz))
+    self.beta_bern = RelaxedBetaBernoulli()
     self.sigmoid = nn.Sigmoid()
-    self.sigmoid_temp = 1e2
+    self.sigmoid_temp = 1e1
+    self.lambda_scale = 1e-3
+    self.lambda_init = (-1) * 1e-4
 
   def detach_lambdas_(self):
     if self.lambda_g is not None:
@@ -221,29 +226,38 @@ class MaskGenerator(nn.Module):
     w_i = self.eyes
     # Relativity term w_r: [(total n of set)^2]
     if self.lambda_g is None or self.lambda_l is None:
-      self.lambda_g = C(torch.ones(x_set.size(0), 1)) * self.init_lambada
+      self.lambda_g = C(torch.ones(x_set.size(0), 1)) * self.lambda_init
       self.lambda_l = self.lambda_g
     lambda_gl = (self.lambda_g + self.lambda_l)
 
     # Equivariant weight multiplication
-    x_set = x_set.t().matmul(self.eyes) + x_set.t().matmul(lambda_gl * self.ones).detach()
+    x_set = x_set.t().matmul(self.eyes) \
+            + x_set.t().matmul(lambda_gl * self.ones).detach()
+            # NOTE: make it faster?
 
     # last layers for mask generation
     for layer in self.out_layers:
       x_set = layer(x_set.t())
 
     # out[:, 0] -> mask
-    mask_logit = x_set[:, 0]
-    mask = self.sigmoid(mask_logit * self.sigmoid_temp)
-    sparsity_loss = mask.norm(p=1)
+    mask, kld = self.beta_bern(x_set[:, :2])
+    # mask_logit = x_set[:, 0]
+    # mask = self.sigmoid(mask_logit * self.sigmoid_temp)
+    # kld = mask.norm(p=1)
     mask = torch.split(mask, [s[0] for s in x_set_sizes], dim=0)
     name = [n for n in layerwise.keys()]
     mask = {'layer_' + n: m for n, m in zip(name, mask)}
-    # out[:, 1] -> globally averaged lamba_g
-    self.lambda_g = x_set[:, 1].unsqueeze(-1)
-    # out[:, 2] -> locally averaged lambda_l
-    lambda_l = x_set[:, 2].unsqueeze(-1)
-    lambda_l = torch.split(lambda_l, [s[0] for s in x_set_sizes], dim=0)
-    self.lambda_l = torch.cat([l.mean(0).expand_as(l) for l in lambda_l], dim=0)
 
-    return mask, sparsity_loss
+    # out[:, 1] -> globally averaged lamba_g
+    lambda_g = x_set[:, 2].unsqueeze(-1)
+    lambda_g = lambda_g.mean(0).expand_as(lambda_g)
+    self.lambda_g = lambda_g * self.lambda_scale
+
+    # out[:, 2] -> locally averaged lambda_l
+    lambda_l = x_set[:, 3].unsqueeze(-1)
+    lambda_l = torch.split(lambda_l, [s[0] for s in x_set_sizes], dim=0)
+    lambda_l = torch.cat([l.mean(0).expand_as(l) for l in lambda_l], dim=0)
+    self.labmda_l = lambda_l * self.lambda_scale
+    # import pdb; pdb.set_trace()
+
+    return mask, kld

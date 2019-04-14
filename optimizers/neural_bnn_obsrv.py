@@ -78,8 +78,10 @@ class Optimizer(nn.Module):
 
     for iteration in iter_pbar:
       iter_watch.touch()
-      # debug = iteration % 40 == 0 or iteration == 1
-      debug = False
+      if debug_sigint.signal_on:
+        debug = iteration == 1 or iteration % 10 == 0
+      else:
+        debug = False
 
       model_detached = C(model_cls(params=params.detach()))
       loss_detached = model_detached(*inner_data.load())
@@ -88,40 +90,53 @@ class Optimizer(nn.Module):
       g = model_detached.params.grad.flat.detach()
       w = model_detached.params.flat.detach()
 
+      # step & mask genration
       feature = self.feature_gen(g, w)
-      step = self.step_gen(feature, debug)
-      # if debug:
-      #   import pdb; pdb.set_trace()
+      step = self.step_gen(feature)
       step = params.new_from_flat(step)
-      # mask, sparsity_loss = self.mask_gen(feature, params.size().unflat())
+      mask, kld = self.mask_gen(feature, params.size().unflat())
+      mask = ParamsFlattener(mask)
+      mask = mask.expand_as(model_detached.params)
 
-      # mask = ParamsFlattener(mask)
-      # mask = mask.expand_as(model_detached.params)
-
-      # step = step * mask
+      # update
+      step = step * mask
       params = params + step
-      model = C(model_cls(params=params))
-      optim_loss = model(*outer_data.load())
 
-      unroll_losses += optim_loss #+ sparsity_loss * 0.001
+      if mode == 'train':
+        model = C(model_cls(params=params))
+        optim_loss = model(*outer_data.load())
+        if torch.isnan(optim_loss):
+          import pdb; pdb.set_trace()
+      # import pdb; pdb.set_trace()
+        unroll_losses += optim_loss + kld / outer_data.full_size #* 0.00005
 
-      if iteration % unroll == 0:
+      if mode == 'train' and iteration % unroll == 0:
         meta_optimizer.zero_grad()
         unroll_losses.backward()
         # import pdb; pdb.set_trace()
         # nn.utils.clip_grad_norm_(self.parameters(), 0.1)
         meta_optimizer.step()
         unroll_losses = 0
+
+      if not mode == 'train' or iteration % unroll == 0:
         self.mask_gen.detach_lambdas_()
         params = params.detach_()
 
       # import pdb; pdb.set_trace()
 
       iter_pbar.set_description(f'optim_iteration'
-        f'[optim_loss:{optim_loss.tolist():5.5}')
+        f'[optim_loss:{loss_detached.tolist():5.5}')
         # f' sparse_loss:{sparsity_loss.tolist():5.5}]')
       # iter_pbar.set_description(f'optim_iteration[loss:{loss_dense.tolist()}/dist:{dist.tolist()}]')
       # torch.optim.SGD(sparse_params, lr=0.1).step()
-
+      walltime += iter_watch.touch('interval')
       result_dict.append(loss=loss_detached)
+      if not mode == 'train':
+        result_dict.append(
+            walltime=walltime,
+            # **self.params_tracker(
+            #   grad=grad,
+            #   update=batch_arg.updates,
+            # )
+        )
     return result_dict

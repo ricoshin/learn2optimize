@@ -32,8 +32,16 @@ class DataloaderWrapper(object):
     except StopIteration:
       self.dataloader_iter = iter(self.dataloader)
       return next(self.dataloader_iter)
-    except Exception:
+    except AttributeError:
       import pdb; pdb.set_trace()
+
+  @property
+  def batch_size(self):
+    return self.dataloader.batch_size
+
+  @property
+  def full_size(self):
+    return self.batch_size * len(self)
 
 
 class MNISTData:
