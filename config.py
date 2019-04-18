@@ -39,8 +39,8 @@ _neural_optimizers_quadratic = odict({
 
 _neural_optimizers_mnist = odict({
     'LSTM-base': {
-        'train_args': odict(n_epoch=50, n_train=20, n_valid=20, optim_it=200,
-                           unroll=20, lr=0.007),
+        'train_args': odict(n_epoch=50, n_train=20, n_valid=5, optim_it=300,
+                           unroll=20, lr=0.0001),
     },
     'LSTM-ours': {
         'train_args': odict(n_epoch=50, n_train=20, n_valid=5, optim_it=300,
@@ -111,14 +111,14 @@ _common_test_args = odict(n_test=200, optim_it=1000)
 ################################################################################
 
 # train_optimizers = []
-# train_optimizers = ['LSTM-base']
-train_optimizers = ['LSTM-ours']
+train_optimizers = ['LSTM-base']
+# train_optimizers = ['LSTM-ours']
 # train_optimizers = ['LSTM-base','LSTM-ours']
 # train_optimizers = ['LSTM-base', 'LSTM-ours', 'LSTM-ours']
 # test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM', 'LSTM-base', 'LSTM-ours')
 # test_optimizers = ['ADAM']
-# test_optimizers = ['LSTM-base']
-test_optimizers = ['LSTM-ours']
+test_optimizers = ['LSTM-base']
+# test_optimizers = ['LSTM-ours']
 # test_optimizers = ['LSTM-base','LSTM-ours', 'ADAM']
 # test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM', 'LSTM-base', 'LSTM-ours')
 # train_optimizers = ()

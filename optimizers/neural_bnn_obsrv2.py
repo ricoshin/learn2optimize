@@ -97,52 +97,52 @@ class Optimizer(nn.Module):
         debug_2 = False
 
       model_detached = C(model_cls(params=params.detach()))
-      loss_detached = model_detached(*inner_data.load())
+      inner_data_s = inner_data.load()
+      loss_detached = model_detached(*inner_data_s)
       loss_detached.backward()
 
       g = model_detached.params.grad.flat.detach()
       w = model_detached.params.flat.detach()
 
+      outer_data_s = outer_data.load()
+      cand_params = []
+      cand_losses = []
+      best_loss = 99999
       # step & mask genration
-      feature = self.feature_gen(g, w)
-      step = self.step_gen(feature)
-      step = params.new_from_flat(step)
-      # import pdb; pdb.set_trace()
-      if debug_2:
-        cnt = None
-        th = 0.00001
-        for i in range(100):
-          if cnt is None:
-            cnt = ParamsFlattener(
-              self.mask_gen(feature, params.size().unflat(), debug_1)[0]) > th
-          else:
-            cnt += ParamsFlattener(
-              elf.mask_gen(feature, params.size().unflat(), debug_1)[0]) > th
-        import pdb; pdb.set_trace()
-      mask, _, kld = self.mask_gen(feature, params.size().unflat(), debug_1)
-      mask = ParamsFlattener(mask)
-
-      # if debug:
-      #   import pdb; pdb.set_trace()
+      for i in range(1):
+        # feature generation
+        feature = self.feature_gen(g, w)
+        # mask generation
+        mask, _, kld = self.mask_gen(feature, params.size().unflat(), debug_1)
+        mask = ParamsFlattener(mask)
+        mask_layout = mask.expand_as(model_detached.params)
+        # step generation
+        step = self.step_gen(feature)
+        step = params.new_from_flat(step)
+        # prunning
+        step = step * mask_layout
+        params_ = params + step
+        # cand_params.append(params_.flat)
+        sparse_params = params_.prune(mask > 1e-6)
+        if sparse_params.size().unflat()['mat_0'][1] == 0:
+          print('all dropped!')
+          continue
 
 
-      iters.append(iteration);
-      if res1 is None:
-        res1 = mask > 0.0001
-      else:
-        res1 += mask > 0.0001
-      res2.append((mask > 0.0001).sum().unflat['layer_0'].tolist()/500)
-      res3.append((mask > 0.0001).sum().unflat['layer_1'].tolist()/10)
-      lamb.append(round(self.mask_gen.lamb[0].tolist(), 6))
-      gamm_g.append(round(self.mask_gen.gamm_g[0].tolist(), 6))
-      gamm_l1.append(round(self.mask_gen.gamm_l[0][0].tolist(), 6))
-      gamm_l2.append(round(self.mask_gen.gamm_l[1][0].tolist(), 6))
+        if debug_2:
+          import pdb; pdb.set_trace()
 
-      mask = mask.expand_as(model_detached.params)
+        # cand_loss = model(*outer_data_s)
+        sparse_model = C(model_cls(params=sparse_params.detach()))
 
-      # update
-      step = step * mask
-      params = params + step
+        loss = sparse_model(*inner_data_s)
+        try:
+          if loss < best_loss:
+            best_loss = loss
+            best_params = params_
+        except:
+          import pdb; pdb.set_trace()
+      params = best_params
 
       if mode == 'train':
         model = C(model_cls(params=params))

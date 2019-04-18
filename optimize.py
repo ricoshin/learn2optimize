@@ -91,10 +91,11 @@ def test_neural(name, save_dir, learned_params, data_cls, model_cls,
                 out_mul=1.0):
   data_cls = _get_attr_by_name(data_cls)
   model_cls = _get_attr_by_name(model_cls)
-  optim_cls = _get_attr_by_name(optim_module).Optimizer
+  optim_cls = _get_optim_by_name(optim_module)
 
-  optimizer = C(optim_cls(preproc=preproc))
+  optimizer = C(optim_cls())
   optimizer.params = learned_params
+  data = data_cls()
   meta_optim = None
   unroll = 1
   np.random.seed(0)

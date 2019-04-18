@@ -220,8 +220,11 @@ class MNISTModel(nn.Module):
     linears = {}
     while f'mat_{i}' in params:
       if self.sb_mode == 'none':
-        inp = torch.matmul(inp, params[f'mat_{i}'])
-        inp = inp + params[f'bias_{i}']
+        try:
+          inp = torch.matmul(inp, params[f'mat_{i}'])
+          inp = inp + params[f'bias_{i}']
+        except:
+          import pdb; pdb.set_trace()
 
       elif self.sb_mode in ['normal', 'unified']:
         if i == len(params) - 1:

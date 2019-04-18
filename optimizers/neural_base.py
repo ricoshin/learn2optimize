@@ -15,8 +15,8 @@ C = utils.getCudaManager('default')
 
 
 class Optimizer(nn.Module):
-  def __init__(
-          self, preproc=False, hidden_sz=20, preproc_factor=10.0, rnn_cell='lstm'):
+  def __init__(self, preproc=True, hidden_sz=20, preproc_factor=10.0,
+               rnn_cell='lstm'):
     super().__init__()
     assert rnn_cell in ['lstm', 'gru']
     self.rnn_cell = rnn_cell
@@ -73,7 +73,7 @@ class Optimizer(nn.Module):
       outer_data = None
 
     model = C(model_cls())
-    optimizer_states = C(RNNStates.initial_zeros(
+    optimizer_states = C(OptimizerStates.initial_zeros(
         size=(self.n_layers, len(model.params), self.hidden_sz),
         rnn_cell=self.rnn_cell))
 

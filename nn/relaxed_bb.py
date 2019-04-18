@@ -59,12 +59,11 @@ class RelaxedBetaBernoulli(nn.Module):
     temp = C(torch.Tensor([0.1]))
     z = RelaxedBernoulli(temp, probs=pi).rsample()
     kld = self.compute_kld(a, b)
-    return z, kld
+    return z, pi, kld
 
   # def get_mask(self, Epi=None):
   #   Epi = self.get_Epi() if Epi is None else Epi
   #   return (Epi >= self.thres).float()
-
 
   # def get_num_active(self):
   #   return self.get_mask().sum().int().item()

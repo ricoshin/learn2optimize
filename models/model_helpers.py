@@ -436,6 +436,7 @@ class ParamsFlattener(object):
         if k_self: # mat (copy the mask pattern along the column axis)
           out_dict[k_other] = self.unflat[k_self].squeeze(0).expand_as(v_other)
         else: # bias (no need to drop - fill ones)
+          # NOTE: only when key of bias is None
           out_dict[k_other] = v_other.new_ones(v_other.size())
         # else:
           # out_dict[k_other] = self.unflat[k_self].squeeze()
@@ -503,9 +504,12 @@ class ParamsFlattener(object):
       for m_key, p_key in zip(m_keys, p_keys):# range(len(self.unflat)):
         p_name, p_layer = p_key.split('_')
         p = self.unflat[p_key]
+        # m = mask[m_key].squeeze().nonzero().squeeze()
+        # out[p_key] = p.index_select(-1, m)
         if int(p_layer) < last_layer:
           m = mask[m_key].squeeze().nonzero().squeeze()
           out[p_key] = p.index_select(-1, m)
+          # import pdb; pdb.set_trace()
         else:  # do not prune the last units
           out[p_key] = p
           # when mat_x, dim=1 / when bias_x, dim=0
