@@ -104,68 +104,72 @@ class Optimizer(nn.Module):
       g = model_detached.params.grad.flat.detach()
       w = model_detached.params.flat.detach()
 
-      outer_data_s = outer_data.load()
       cand_params = []
       cand_losses = []
-      best_loss = 99999
-      # step & mask genration
-      for i in range(1):
-        # feature generation
-        feature = self.feature_gen(g, w)
-        # mask generation
-        mask, _, kld = self.mask_gen(feature, params.size().unflat(), debug_1)
-        mask = ParamsFlattener(mask)
-        mask_layout = mask.expand_as(model_detached.params)
-        # step generation
-        step = self.step_gen(feature)
-        step = params.new_from_flat(step)
-        # prunning
-        step = step * mask_layout
-        params_ = params + step
-        # cand_params.append(params_.flat)
-        sparse_params = params_.prune(mask > 1e-6)
-        if sparse_params.size().unflat()['mat_0'][1] == 0:
-          print('all dropped!')
-          continue
+      best_loss = 9999999
+      best_params = None
+      n_samples = 5
 
+      for m in range(2):
+        feature = self.feature_gen(g, w, n=n_samples, m_update=(m==0))
+        p_size = params.size().unflat()
+        mask_gen_out = self.mask_gen(feature, p_size, n=n_samples)
+        step_out = self.step_gen(feature, n=n_samples)
 
-        if debug_2:
-          import pdb; pdb.set_trace()
-
-        # cand_loss = model(*outer_data_s)
-        sparse_model = C(model_cls(params=sparse_params.detach()))
-
-        loss = sparse_model(*inner_data_s)
-        try:
-          if loss < best_loss:
-            best_loss = loss
+        # step & mask genration
+        for i in range(n_samples):
+          mask, _, kld = mask_gen_out[i]
+          step = step_out[i]
+          mask = ParamsFlattener(mask)
+          mask_layout = mask.expand_as(params)
+          step = params.new_from_flat(step)
+          # prunning
+          step = step * mask_layout
+          params_ = params + step
+          # cand_params.append(params_.flat)
+          sparse_params = params_.prune(mask > 1e-6)
+          if sparse_params.size().unflat()['mat_0'][1] == 0:
+            continue
+          if debug_2:
+            import pdb; pdb.set_trace()
+          # cand_loss = model(*outer_data_s)
+          sparse_model = C(model_cls(params=sparse_params.detach()))
+          loss = sparse_model(*inner_data_s)
+          try:
+            if loss < best_loss:
+              best_loss = loss
+              best_params = params_
+              best_kld = kld
+          except:
             best_params = params_
-        except:
-          import pdb; pdb.set_trace()
-      params = best_params
+            best_kld = kld
+
+      if best_params is not None:
+        params = best_params
+        best_kld = 0
 
       if mode == 'train':
         model = C(model_cls(params=params))
         optim_loss = model(*outer_data.load())
         if torch.isnan(optim_loss):
           import pdb; pdb.set_trace()
-      # import pdb; pdb.set_trace()
-        unroll_losses += optim_loss + kld / outer_data.full_size #* 0.00005
+        unroll_losses += optim_loss + best_kld / outer_data.full_size
 
       if mode == 'train' and iteration % unroll == 0:
         meta_optimizer.zero_grad()
         unroll_losses.backward()
         # import pdb; pdb.set_trace()
-        nn.utils.clip_grad_norm_(self.parameters(), 0.01)
+        nn.utils.clip_grad_value_(self.parameters(), 0.1)
         meta_optimizer.step()
         unroll_losses = 0
 
       if not mode == 'train' or iteration % unroll == 0:
-        self.mask_gen.detach_lambdas_()
+        # self.mask_gen.detach_lambdas_()
         params = params.detach_()
 
       # import pdb; pdb.set_trace()
-
+      if params is None:
+        import pdb; pdb.set_trace()
 
       iter_pbar.set_description(f'optim_iteration'
         f'[optim_loss:{loss_detached.tolist():5.5}')

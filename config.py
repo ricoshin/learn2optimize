@@ -56,7 +56,7 @@ _neural_optimizers = odict({
 
 _common_neural_args = {
     'LSTM-base': odict(optim_module='neural_base', preproc=True, out_mul=0.1),
-    'LSTM-ours': odict(optim_module='neural_bnn_obsrv', preproc=True, out_mul=0.1),
+    'LSTM-ours': odict(optim_module='neural_bnn_obsrv2', preproc=True, out_mul=0.1),
 }
 
 ################################################################################
@@ -111,14 +111,14 @@ _common_test_args = odict(n_test=200, optim_it=1000)
 ################################################################################
 
 # train_optimizers = []
-train_optimizers = ['LSTM-base']
-# train_optimizers = ['LSTM-ours']
+# train_optimizers = ['LSTM-base']
+train_optimizers = ['LSTM-ours']
 # train_optimizers = ['LSTM-base','LSTM-ours']
 # train_optimizers = ['LSTM-base', 'LSTM-ours', 'LSTM-ours']
 # test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM', 'LSTM-base', 'LSTM-ours')
 # test_optimizers = ['ADAM']
-test_optimizers = ['LSTM-base']
-# test_optimizers = ['LSTM-ours']
+# test_optimizers = ['LSTM-base']
+test_optimizers = ['LSTM-ours']
 # test_optimizers = ['LSTM-base','LSTM-ours', 'ADAM']
 # test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM', 'LSTM-base', 'LSTM-ours')
 # train_optimizers = ()

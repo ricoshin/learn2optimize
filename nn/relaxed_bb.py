@@ -18,12 +18,12 @@ class RelaxedBetaBernoulli(nn.Module):
     # self.a_uc = nn.Parameter(a_uc_init * torch.ones(num_gates))
     # self.b_uc = nn.Parameter(0.5413 * torch.ones(num_gates))
 
-  def get_params(self, x):
-    """Convert 2-d logits into distribution parameters a, b."""
-    assert x.size(1) == 2
-    a = F.softplus(x[:, 0].clamp(min=-10.))
-    b = F.softplus(x[:, 1].clamp(min=-10., max=50.))
-    return a, b
+  # def get_params(self, x):
+  #   """Convert 2-d logits into distribution parameters a, b."""
+  #   assert x.size(1) == 2
+  #   a = F.softplus(x[:, 0].clamp(min=-10.))
+  #   b = F.softplus(x[:, 1].clamp(min=-10., max=50.))
+  #   return a, b
 
   def sample_pi(self, a, b):
     """Sample pi from Beta(Kumaraswamy) distribution with parameter a and b."""
@@ -46,20 +46,20 @@ class RelaxedBetaBernoulli(nn.Module):
     kld = kld.sum()
     return kld
 
-  def forward(self, x):
+  def forward(self, a, b):
     """
     Args:
-      x (tensor): 2-d logits(n_params x 2).
+      a, b (tensor): beta distribution parameters.
 
     Returns:
       z (tensor): Relaxed Beta-Bernoulli binary masks.
+      pi (tensor): Bernoulli distribution parameters
     """
-    a, b = self.get_params(x)
+    # a, b = self.get_params(x)
     pi = self.sample_pi(a, b)
     temp = C(torch.Tensor([0.1]))
     z = RelaxedBernoulli(temp, probs=pi).rsample()
-    kld = self.compute_kld(a, b)
-    return z, pi, kld
+    return z, pi
 
   # def get_mask(self, Epi=None):
   #   Epi = self.get_Epi() if Epi is None else Epi

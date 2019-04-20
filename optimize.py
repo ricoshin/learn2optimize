@@ -5,6 +5,7 @@ import sys
 
 import numpy as np
 import torch
+import torch.optim as optim
 from models.mnist import MNISTData, MNISTModel
 from models.model_helpers import ParamsIndexTracker
 from models.quadratic import QuadraticData, QuadraticModel
@@ -23,8 +24,10 @@ tqdm.monitor_interval = 0
 def _get_attr_by_name(name):
   return getattr(sys.modules[__name__], name)
 
+
 def _get_optim_by_name(name):
   return importlib.import_module("optimizers." + name).Optimizer
+
 
 def train_neural(name, save_dir, data_cls, model_cls, optim_module, n_epoch=20,
                  n_train=20, n_valid=100, optim_it=100, unroll=20, lr=0.001,
@@ -38,11 +41,25 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module, n_epoch=20,
     writer = SummaryWriter(os.path.join(save_dir, name))
   # TODO: handle variable arguments according to different neural optimziers
 
-  lr=0.01
+  step_lr = 1e-2
+  mask_lr = 1e-2
+  # mask_lr = 1e-3
+  
   # meta_optim = torch.optim.SGD(optimizer.parameters(), lr)
   meta_optim = torch.optim.Adam(
-      optimizer.parameters(), lr=lr)#, weight_decay=1e-4)
-  print(lr)
+      optimizer.parameters(), lr=lr)  # , weight_decay=1e-4)
+
+  p_feat = optimizer.feature_gen.parameters()
+  p_step = optimizer.step_gen.parameters()
+  p_mask = optimizer.mask_gen.parameters()
+
+  meta_optim = optim.Adam([
+      {'params':p_feat, 'lr':step_lr, 'weight_decay':1e-4},
+      {'params':p_step, 'lr':step_lr, 'weight_decay':1e-4},
+      {'params':p_mask, 'lr':mask_lr},
+  ])
+
+  print(f'step_lr: {step_lr} / mask_lr: {mask_lr}')
   data = data_cls()
   best_params = None
   best_valid_loss = 999999
