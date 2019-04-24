@@ -16,33 +16,33 @@ _problems = {
 ################################################################################
 
 _neural_optimizers_debug = odict({
-    'LSTM-base': {
+    'RNN-base': {
         'train_args': odict(n_epoch=3, n_train=5, n_valid=5, optim_it=100,
                             unroll=20, lr=0.005), # 0.001
     },
-    'LSTM-ours': {
+    'Proposed': {
         'train_args': odict(n_epoch=10, n_train=5, n_valid=1, optim_it=100,
                             unroll=20, lr=0.009), # 0.003
     },
 })
 
 _neural_optimizers_quadratic = odict({
-    'LSTM-base': {
+    'RNN-base': {
         'train_args': odict(n_epoch=50, n_train=20, n_valid=20, optim_it=100,
                            unroll=20, lr=0.002),
     },
-    'LSTM-ours': {
+    'Proposed': {
         'train_args': odict(n_epoch=50, n_train=20, n_valid=20, optim_it=100,
                            unroll=20, lr=0.002),
     },
 })
 
 _neural_optimizers_mnist = odict({
-    'LSTM-base': {
+    'RNN-base': {
         'train_args': odict(n_epoch=50, n_train=10, n_valid=10, iter_train=300,
                             iter_valid=1000, unroll=20, lr=0.0007),
     },
-    'LSTM-ours': {
+    'Proposed': {
         'train_args': odict(n_epoch=2, n_train=2, n_valid=2, iter_train=10,
                             iter_valid=10, unroll=20, lr=0.01),
     },
@@ -55,8 +55,8 @@ _neural_optimizers = odict({
 })
 
 _common_neural_args = {
-    'LSTM-base': odict(optim_module='neural_base', preproc=True, out_mul=0.1),
-    'LSTM-ours': odict(optim_module='neural_bnn_obsrv', preproc=True, out_mul=0.1),
+    'RNN-base': odict(optim_module='neural_base', preproc=True, out_mul=0.1),
+    'Proposed': odict(optim_module='neural_bnn_obsrv', preproc=True, out_mul=0.1),
 }
 
 ################################################################################
@@ -111,17 +111,17 @@ _common_test_args = odict(n_test=2, iter_test=10)
 ################################################################################
 
 # train_optimizers = []
-# train_optimizers = ['LSTM-base']
-train_optimizers = ['LSTM-ours']
-# train_optimizers = ['LSTM-base','LSTM-ours']
-# train_optimizers = ['LSTM-base', 'LSTM-ours', 'LSTM-ours']
-# test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM', 'LSTM-base', 'LSTM-ours')
+# train_optimizers = ['RNN-base']
+train_optimizers = ['Proposed']
+# train_optimizers = ['RNN-base','Proposed']
+# train_optimizers = ['RNN-base', 'Proposed', 'Proposed']
+# test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM', 'RNN-base', 'Proposed')
 # test_optimizers = ['ADAM']
-# test_optimizers = ['LSTM-base']
-# test_optimizers = ['LSTM-ours']
-test_optimizers = ['LSTM-ours', 'ADAM']
-# test_optimizers = ['LSTM-base','LSTM-ours', 'ADAM']
-# test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM', 'LSTM-base', 'LSTM-ours')
+# test_optimizers = ['RNN-base']
+# test_optimizers = ['Proposed']
+test_optimizers = ['Proposed', 'ADAM']
+# test_optimizers = ['RNN-base','Proposed', 'ADAM']
+# test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM', 'RNN-base', 'Proposed')
 # train_optimizers = ()
 # test_optimizers = ('SGD')
 # test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM')

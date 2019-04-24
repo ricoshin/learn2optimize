@@ -38,7 +38,6 @@ def log_pbar(result_dict, pbar, keys=None):
 def log_tf_event(result_dict, writer, step, tag):
   if writer:
     for i, (k, v) in enumerate(result_dict.items()):
-      import pdb; pdb.set_trace()
       writer.add_scalar(f'{tag}/{k}', v, step)
 
 
