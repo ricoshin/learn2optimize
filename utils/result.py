@@ -119,6 +119,9 @@ class ResultDict(dict):
   def __repr__(self):
     return f"ResultDict({str(self.keys())})"
 
+  def getitem(self, key):
+    return ResultDict({k: v[key] for k, v in self.items()})
+
   def update(self, name, *args, **kwargs):
     dict_ = dict(*args, **kwargs)
     for key, value in dict_.items():
@@ -134,8 +137,12 @@ class ResultDict(dict):
       else:
         self.__getitem__(key).append(value)
 
-  def numpify_dict_values(self):
+  def numpy(self):
     return ResultDict({k: np.array(v) for k, v in self.items()})
+
+  def mean(self, *args, **kwargs):
+    return ResultDict({k: np.array(v).mean(*args, **kwargs)\
+      for k, v in self.items()})
 
   def save(self, name, save_dir):
     if save_dir is None:
@@ -149,7 +156,7 @@ class ResultDict(dict):
   @property
   def shape(self):
     """return dictionary of shapes(tuple) corresponing to each keys."""
-    return {k: v.shape for k, v in self.numpify_dict_values().items()}
+    return {k: v.shape for k, v in self.numpy().items()}
 
   @property
   def dtype(self):
@@ -180,7 +187,7 @@ class ResultDict(dict):
   # def data_frame(self):
     # dict_ = {}
     # full_shape = self.full_shape
-    # for name, array in self.numpify_dict_values().items():
+    # for name, array in self.numpy().items():
     #   margin = len(full_shape) - len(array.shape)
     #   assert not margin < 0
     #   # match the number of dimensions with unsqueezing
@@ -202,7 +209,7 @@ class ResultDict(dict):
     # return pd.DataFrame(series)
 
   def data_frame(self, opt_name, dim_names):
-    dict_ = self.numpify_dict_values()
+    dict_ = self.numpy()
     #values = [array for array in results.values()]
     #shapes = [array.shape for array in dict_.values()]
     ndims = [len(shape) for shape in self.shape.values()]

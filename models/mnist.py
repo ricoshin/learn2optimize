@@ -46,47 +46,61 @@ class DataloaderWrapper(object):
 
 class MNISTData:
   """Current data scheme is as follows:
-    - train data (100%/60k)
-      - outer-train data(70%/42k): shuffled at every meta-iteration.
-        - inner-train data: for model objective w.r.t. theta. (50%/21k)
-        - inner-valid data: for meta-optimizer objective w.r.t phi. (50%/21k)
-      - outer-valid data(30%/18k)
-        - this will be used to determine when to do early-stopping
-    - test data (10k): held-out for meta-test
+    - meta-train data(30K)
+      - inner-train data(15K)
+      - inner-test data(15K)
+    - meta-valid data(20K)
+      - inner-train data(15K)
+      - inner-test data(5K)
+    - meta-test data(20K)
+      - inner-train data(15K)
+      - inner-test data(5K)
   """
 
-  def __init__(self, outer_train_ratio=0.7, inner_train_ratio=0.5,
-               batch_size=128):
+  def __init__(self, batch_size=128):
     self.batch_size = batch_size
-    self.outer_train_ratio = outer_train_ratio
-    self.inner_train_ratio = inner_train_ratio
     train_data = datasets.MNIST('./mnist', train=True, download=True,
                                 transform=torchvision.transforms.ToTensor())
     test_data = datasets.MNIST('./mnist', train=False, download=True,
                                transform=torchvision.transforms.ToTensor())
-    data_ = data.dataset.ConcatDataset([train_data, test_data])
-    self.meta_train_d, self.meta_test_d = self._fixed_split(data_)
+    self.m_train_d, self.m_valid_d, self.m_test_d = self._meta_data_split(
+      train_data, test_data)
 
   def sample_meta_train(self, ratio=0.5):
     meta_train = {}
-    inner_train, inner_test = self._random_split(self.meta_train_d, ratio)
-    meta_train['train'] = self._get_wrapped_dataloader(
+    inner_train, inner_test = self._random_split(self.m_train_d, ratio)
+    meta_train['in_train'] = self._get_wrapped_dataloader(
       inner_train, self.batch_size)
-    meta_train['test'] = self._get_wrapped_dataloader(
+    meta_train['in_test'] = self._get_wrapped_dataloader(
       inner_test, self.batch_size)
     return meta_train
 
-  def sample_meta_test(self, ratio=0.5):
-    meta_test = {}
-    inner_train, inner_test = self._random_split(self.meta_test_d, ratio)
-    meta_test['train'] = self._get_wrapped_dataloader(
+  def sample_meta_valid(self, ratio=0.75):
+    meta_valid = {}
+    inner_train, inner_test = self._random_split(self.m_valid_d, ratio)
+    meta_valid['in_train'] = self._get_wrapped_dataloader(
       inner_train, self.batch_size)
-    meta_test['test'] = self._get_wrapped_dataloader(
+    meta_valid['in_test'] = self._get_wrapped_dataloader(
+      inner_test, self.batch_size)
+    return meta_valid
+
+  def sample_meta_test(self, ratio=0.75):
+    meta_test = {}
+    inner_train, inner_test = self._random_split(self.m_test_d, ratio)
+    meta_test['in_train'] = self._get_wrapped_dataloader(
+      inner_train, self.batch_size)
+    meta_test['in_test'] = self._get_wrapped_dataloader(
       inner_test, self.batch_size)
     return meta_test
 
+  def _meta_data_split(self, train_data, test_data):
+    data_ = data.dataset.ConcatDataset([train_data, test_data])
+    meta_train, meta_valid_test = self._fixed_split(data_, 30/70)
+    meta_valid, meta_test = self._fixed_split(meta_valid_test, 20/40)
+    return meta_train, meta_valid, meta_test
+
   def _random_split(self, dataset, ratio=0.5):
-    assert isinstance(dataset, data.dataset)
+    assert isinstance(dataset, data.dataset.Dataset)
     n_total = len(dataset)
     n_a = int(n_total * ratio)
     n_b = n_total - n_a
@@ -94,10 +108,10 @@ class MNISTData:
     return data_a, data_b
 
   def _fixed_split(self, dataset, ratio=0.5):
-    assert isinstance(dataset, data.dataset)
+    assert isinstance(dataset, data.dataset.Dataset)
     id_mid = len(dataset) // 2
-    id_a = range(n_toal)[:id_mid]
-    id_b = range(n_toal)[id_mid:]
+    id_a = range(len(dataset))[:id_mid]
+    id_b = range(len(dataset))[id_mid:]
     data_a = data.Subset(dataset, id_a)
     data_b = data.Subset(dataset, id_b)
     return data_a, data_b
@@ -163,7 +177,7 @@ class MNISTModel(nn.Module):
     self._activations = {}
     self.nonlinear = nn.Sigmoid()
     self.loss = nn.NLLLoss()
-
+    
   # def all_named_parameters(self):
   #   return [(k, v) for k, v in self.params.dict.items()]
 

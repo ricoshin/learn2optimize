@@ -69,7 +69,7 @@ def main():
 
   params = {}
   ##############################################################################
-  print('\nTraining..')
+  print('\nMeta-training..')
   for name in [opt for opt in test_optimizers if opt in neural_optimizers]:
     if name not in args.retrain and OptimizerParams.is_loadable(name, load_dir):
       params[name] = OptimizerParams.load(name, load_dir).save(name, save_dir)
@@ -78,7 +78,7 @@ def main():
       kwargs = neural_optimizers[name]['train_args']
       params[name] = train_neural(name, save_dir, **problem, **kwargs)
   ##############################################################################
-  print('\n\n\nTesting..')
+  print('\n\n\nMeta-testing..')
   results = {}
   for name in test_optimizers:
     # np.random.seed(0)
@@ -98,57 +98,7 @@ def main():
         results[name] = result
 
   ##############################################################################
-  print('\nPlotting..')
-  plotter = utils.Plotter(title=args.problem, results=results, out_dir=save_dir)
-  # loss w.r.t. step_num
-  # plotter.plot('grad_value', 'step_num', ['test_num', 'step_num', 'track_num'])
-  import pdb; pdb.set_trace()
-  plotter.plot('step_num', 'grad', ['test_num', 'step_num', 'track_num'])
-  plotter.plot('step_num', 'loss', ['test_num', 'step_num'],
-               hue='optimizer', logscale=True,
-               mean_group=['optimizer', 'step_num'])
-
-  # loss w.r.t. walltime
-  # plotter.plot('walltime', 'loss', ['test_num', 'step_num'],
-  #              hue='optimizer',
-  #              mean_group=['optimizer', 'step_num'])
-
-  # grad_loss w.r.t. step_num (for specified neural opt name)
-  # plotter.plot('step_num', 'grad_loss', ['test_num', 'step_num'],
-  #              mean_group=['optimizer', 'step_num'],
-  #              visible_names=['LSTM-ours'])
-
-  # update w.r.t. step_num (for specified neural opt name)
-  plotter.plot('step_num', 'update', ['test_num', 'step_num', 'track_num'],
-               visible_names=['LSTM-base', 'LSTM-ours'])
-
-  # grad w.r.t. step_num
-  plotter.plot('step_num', 'grad', ['test_num', 'step_num', 'track_num'],
-               visible_names=['LSTM-base', 'LSTM-ours'])
-
-  # mu w.r.t. step_num
-  plotter.plot('step_num', 'mu', ['test_num', 'step_num', 'track_num'],
-               visible_names=['LSTM-ours'])
-
-  # sigma w.r.t. step_num
-  plotter.plot('step_num', 'sigma', ['test_num', 'step_num', 'track_num'],
-               visible_names=['LSTM-ours'])
-
-  # grad w.r.t. step_num (for specified neural opt name)
-  # plotter.plot('step_num', 'grad_pred', ['test_num', 'step_num', 'track_num'],
-  #              visible_names=['LSTM-ours'])
-  # plotter.plot('step_num', 'grad_value', ['test_num', 'step_num', 'track_num'],
-  #              hue='grad_type', visible_names=['LSTM-ours'])
-  print('end')
-  # utils.loss_plot(args.problem, results, save_dir, 'step_num')
-  # utils.loss_plot(args.problem, results, save_dir, 'walltime')
-  # utils.loss_plot(args.problem, [results[-1]], save_dir, 'step_num', 'grad_loss')
-  #utils.plot(results, args.problem, names=test_optimizers, x='step_num')
-  #utils.plot(results, args.problem, names=test_optimizers, x='wallclock_time')
-  #utils.plot_update(updates, args.problem, names=list(neural_optimizers.keys()))
-  # utils.plot_grid(updates[1], grids[0], args.problem, names='LSTM-ours')
-
-  ##############################################################################
+  print('End of program.')
 
 
 if __name__ == "__main__":

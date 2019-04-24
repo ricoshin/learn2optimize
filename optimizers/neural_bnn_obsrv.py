@@ -15,6 +15,7 @@ from tqdm import tqdm
 from utils import utils
 from utils.result import ResultDict
 from utils.torchviz import make_dot
+from optimize import log_pbar
 
 C = utils.getCudaManager('default')
 debug_sigint = utils.getDebugger('SIGINT')
@@ -41,40 +42,23 @@ class Optimizer(nn.Module):
     optimizer_params.to_optimizer(self)
 
   def meta_optimize(self, meta_optimizer, data, model_cls, optim_it, unroll,
-                    out_mul, mode):
+                    out_mul, tf_writer=None, mode='train'):
     assert mode in ['train', 'valid', 'test']
     if mode == 'train':
       self.train()
-      # data.new_train_data()
-      inner_data = data.loaders['inner_train']
-      outer_data = data.loaders['inner_valid']
-      # inner_data = data.loaders['train']
-      # outer_data = inner_data
-      drop_mode = 'soft_drop'
-    elif mode == 'valid':
+    else:
       self.eval()
-      inner_data = data.loaders['valid']
-      outer_data = None
-      drop_mode = 'hard_drop'
-    elif mode == 'test':
-      self.eval()
-      inner_data = data.loaders['test']
-      outer_data = None
-      drop_mode = 'hard_drop'
-
-    # data = dataset(mode=mode)
-    model = C(model_cls(sb_mode=self.sb_mode))
-    model(*data.pseudo_sample())
-    params = model.params
 
     result_dict = ResultDict()
     unroll_losses = 0
     walltime = 0
+    kld_test = torch.tensor(0.)
 
+    params = C(model_cls()).params
     self.feature_gen.new()
     self.step_gen.new()
-    iter_pbar = tqdm(range(1, optim_it + 1), 'optim_iteration')
-    iter_watch = utils.StopWatch('optim_iteration')
+    iter_pbar = tqdm(range(1, optim_it + 1), 'Inner_loop')
+    iter_watch = utils.StopWatch('Inner_loop')
 
     res1 = None
     res2=[]
@@ -98,7 +82,7 @@ class Optimizer(nn.Module):
         debug_2 = False
 
       model_train = C(model_cls(params=params.detach()))
-      nll_train = model_train(*data['train'].load())
+      nll_train = model_train(*data['in_train'].load())
       nll_train.backward()
 
       g = model_train.params.grad.flat.detach()
@@ -147,25 +131,23 @@ class Optimizer(nn.Module):
       step = step #* mask_layout
       params = params + step
 
-      model_test = C(model_cls(params=params))
-      loss = utils.isnan(model(*data['test'].load()))
+      if not mode == 'train':
+        # meta-test time cost (excluding inner-test time)
+        walltime += iter_watch.touch('interval')
 
-      if mode == 'train':
-        unroll_losses += nll_test #+ kld_test
-      elif mode == 'valid':
-        pass
+      model_test = C(model_cls(params=params))
+      nll_test = utils.isnan(model_test(*data['in_test'].load()))
+      total_test = nll_test + kld_test
 
       if debug_2:
         import pdb; pdb.set_trace()
 
       if mode == 'train':
         if not iteration % unroll == 0:
-
-          unroll_losses += loss_test +
+          unroll_losses += total_test
         else:
           meta_optimizer.zero_grad()
           unroll_losses.backward()
-          # import pdb; pdb.set_trace()
           nn.utils.clip_grad_value_(self.parameters(), 0.01)
           meta_optimizer.step()
           unroll_losses = 0
@@ -175,28 +157,21 @@ class Optimizer(nn.Module):
         self.step_gen.lr = self.step_gen.log_lr.detach()
         params = params.detach_()
 
-      # import pdb; pdb.set_trace()
+      if mode == 'train':
+        # meta-training time cost
+        walltime += iter_watch.touch('interval')
 
+      # result dict
+      result = dict(
+        nll_train=nll_train.tolist(),
+        nll_test=nll_test.tolist(),
+        kld_test=kld_test.tolist(),
+        total_test=total_test.tolist(),
+        walltime=walltime,
+        )
+      result_dict.append(result)
+      log_pbar(result, iter_pbar)
+      # desc = [f'{k}: {v:5.5}' for k, v in result.items()]
+      # iter_pbar.set_description(f"inner_loop [ {' / '.join(desc)} ]")
 
-      iter_pbar.set_description(f'optim_iteration'
-        f'[optim_loss:{loss_detached.tolist():5.5}')
-        # f' sparse_loss:{sparsity_loss.tolist():5.5}]')
-      # iter_pbar.set_description(f'optim_iteration[loss:{loss_dense.tolist()}/dist:{dist.tolist()}]')
-      # torch.optim.SGD(sparse_params, lr=0.1).step()
-      walltime += iter_watch.touch('interval')
-      result_dict.append(
-        train_nll=nll_train,
-        test_nll=nll_test,
-        test_kld=kld_test,
-        test_total=(nll_test + kld_test),
-        #loss_kld=loss_kld,
-        )
-      if not mode == 'train':
-        result_dict.append(
-            walltime=walltime,
-            # **self.params_tracker(
-            #   grad=grad,
-            #   update=batch_arg.updates,
-            # )
-        )
     return result_dict
