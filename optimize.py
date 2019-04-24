@@ -90,19 +90,19 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module, n_epoch=20,
         f'train[test_total:{test_total:10.3f}]'
         )
       if tf_write and save_dir is not None:
-        writer.add_scalar('0_train/0_outer/0_nll', train_nll, j)
-        writer.add_scalar('1_test/0_outer/0_nll', test_nll, j)
-        writer.add_scalar('1_test/0_outer/1_kld', train_kld, j)
-        writer.add_scalar('1_test/0_outer/2_nll', train_nll, j)
+        step = i * train_epoch + j
+        writer.add_scalar('0_train/0_outer/0_nll', train_nll, step)
+        writer.add_scalar('1_test/0_outer/0_nll', test_nll, step)
+        writer.add_scalar('1_test/0_outer/1_kld', train_kld, step)
+        writer.add_scalar('1_test/0_outer/2_nll', train_nll, step)
 
-
-    mean_train_loss = result_dict['loss_ever'].mean()
-    result_dict = ResultDict()
+    # mean_train_loss = result_dict['loss_ever'].mean()
+    # result_dict = ResultDict()
     valid_pbar = tqdm(range(n_valid), 'valid')
 
     for j in valid_pbar:
       test_data = data.sample_meta_test()
-      result_dict_ = optimizer.meta_optimize(meta_optim, test_data,
+      result_dict_ = optimizer.meta_optimize(meta_optim, test_data,b
         model_cls, optim_it, unroll, out_mul, 'valid')
       iter_loss = result_dict_['loss'].sum()
       result_dict.append(test_num=j, loss_ever=iter_loss, **result_dict_)
