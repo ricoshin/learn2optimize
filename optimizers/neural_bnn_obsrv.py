@@ -72,7 +72,7 @@ class Optimizer(nn.Module):
     walltime = 0
 
     self.feature_gen.new()
-
+    self.step_gen.new()
     iter_pbar = tqdm(range(1, optim_it + 1), 'optim_iteration')
     iter_watch = utils.StopWatch('optim_iteration')
 
@@ -84,6 +84,7 @@ class Optimizer(nn.Module):
     gamm_l1 = []
     gamm_l2 = []
     iters = []
+    n_sample = 10
 
     for iteration in iter_pbar:
       iter_watch.touch()
@@ -96,17 +97,18 @@ class Optimizer(nn.Module):
       else:
         debug_2 = False
 
-      model_detached = C(model_cls(params=params.detach()))
-      loss_detached = model_detached(*inner_data.load())
-      loss_detached.backward()
+      model_train = C(model_cls(params=params.detach()))
+      nll_train = model_train(*data['train'].load())
+      nll_train.backward()
 
-      g = model_detached.params.grad.flat.detach()
-      w = model_detached.params.flat.detach()
+      g = model_train.params.grad.flat.detach()
+      w = model_train.params.flat.detach()
 
       # step & mask genration
-      feature = self.feature_gen(g, w)
-      step = self.step_gen(feature)
-      step = params.new_from_flat(step)
+      feature, v_sqrt = self.feature_gen(g)
+      step = self.step_gen(feature, v_sqrt, debug=debug_1)
+
+      step = params.new_from_flat(step[0])
       # import pdb; pdb.set_trace()
       if debug_2:
         cnt = None
@@ -119,49 +121,58 @@ class Optimizer(nn.Module):
             cnt += ParamsFlattener(
               elf.mask_gen(feature, params.size().unflat(), debug_1)[0]) > th
         import pdb; pdb.set_trace()
-      mask, _, kld = self.mask_gen(feature, params.size().unflat(), debug_1)
-      mask = ParamsFlattener(mask)
 
-      # if debug:
-      #   import pdb; pdb.set_trace()
+      size = params.size().unflat()
+      # mask_out = self.mask_gen(feature, size, debug=debug_1)
+      # mask, _, kld = mask_out[0]
+      # kld_test = kld / data['test'].full_size #* 0.00005
+      # mask = ParamsFlattener(mask)
+      # mask_layout = mask.expand_as(params)
+      #
+      # iters.append(iteration);
+      # if res1 is None:
+      #   res1 = mask > 0.0001
+      # else:
+      #   res1 += mask > 0.0001
+      # res2.append((mask > 0.0001).sum().unflat['layer_0'].tolist()/500)
+      # res3.append((mask > 0.0001).sum().unflat['layer_1'].tolist()/10)
+      # lamb.append(round(self.mask_gen.lamb[0].tolist(), 6))
+      # gamm_g.append(round(self.mask_gen.gamm_g[0].tolist(), 6))
+      # gamm_l1.append(round(self.mask_gen.gamm_l[0][0].tolist(), 6))
+      # gamm_l2.append(round(self.mask_gen.gamm_l[1][0].tolist(), 6))
 
-
-      iters.append(iteration);
-      if res1 is None:
-        res1 = mask > 0.0001
-      else:
-        res1 += mask > 0.0001
-      res2.append((mask > 0.0001).sum().unflat['layer_0'].tolist()/500)
-      res3.append((mask > 0.0001).sum().unflat['layer_1'].tolist()/10)
-      lamb.append(round(self.mask_gen.lamb[0].tolist(), 6))
-      gamm_g.append(round(self.mask_gen.gamm_g[0].tolist(), 6))
-      gamm_l1.append(round(self.mask_gen.gamm_l[0][0].tolist(), 6))
-      gamm_l2.append(round(self.mask_gen.gamm_l[1][0].tolist(), 6))
-
-      mask = mask.expand_as(model_detached.params)
+      # mask = mask.expand_as(model_detached.params)
 
       # update
-      step = step * mask
+      step = step #* mask_layout
       params = params + step
 
-      if mode == 'train':
-        model = C(model_cls(params=params))
-        optim_loss = model(*outer_data.load())
-        if torch.isnan(optim_loss):
-          import pdb; pdb.set_trace()
-      # import pdb; pdb.set_trace()
-        unroll_losses += optim_loss + kld / outer_data.full_size #* 0.00005
+      model_test = C(model_cls(params=params))
+      loss = utils.isnan(model(*data['test'].load()))
 
-      if mode == 'train' and iteration % unroll == 0:
-        meta_optimizer.zero_grad()
-        unroll_losses.backward()
-        # import pdb; pdb.set_trace()
-        nn.utils.clip_grad_norm_(self.parameters(), 0.01)
-        meta_optimizer.step()
-        unroll_losses = 0
+      if mode == 'train':
+        unroll_losses += nll_test #+ kld_test
+      elif mode == 'valid':
+        pass
+
+      if debug_2:
+        import pdb; pdb.set_trace()
+
+      if mode == 'train':
+        if not iteration % unroll == 0:
+
+          unroll_losses += loss_test +
+        else:
+          meta_optimizer.zero_grad()
+          unroll_losses.backward()
+          # import pdb; pdb.set_trace()
+          nn.utils.clip_grad_value_(self.parameters(), 0.01)
+          meta_optimizer.step()
+          unroll_losses = 0
 
       if not mode == 'train' or iteration % unroll == 0:
-        self.mask_gen.detach_lambdas_()
+        # self.mask_gen.detach_lambdas_()
+        self.step_gen.lr = self.step_gen.log_lr.detach()
         params = params.detach_()
 
       # import pdb; pdb.set_trace()
@@ -173,7 +184,13 @@ class Optimizer(nn.Module):
       # iter_pbar.set_description(f'optim_iteration[loss:{loss_dense.tolist()}/dist:{dist.tolist()}]')
       # torch.optim.SGD(sparse_params, lr=0.1).step()
       walltime += iter_watch.touch('interval')
-      result_dict.append(loss=loss_detached)
+      result_dict.append(
+        train_nll=nll_train,
+        test_nll=nll_test,
+        test_kld=kld_test,
+        test_total=(nll_test + kld_test),
+        #loss_kld=loss_kld,
+        )
       if not mode == 'train':
         result_dict.append(
             walltime=walltime,

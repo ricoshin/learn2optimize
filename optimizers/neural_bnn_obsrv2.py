@@ -110,7 +110,7 @@ class Optimizer(nn.Module):
       best_params = None
       n_samples = 5
 
-      for m in range(2):
+      for m in range(1):
         feature = self.feature_gen(g, w, n=n_samples, m_update=(m==0))
         p_size = params.size().unflat()
         mask_gen_out = self.mask_gen(feature, p_size, n=n_samples)

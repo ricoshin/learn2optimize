@@ -41,25 +41,29 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module, n_epoch=20,
     writer = SummaryWriter(os.path.join(save_dir, name))
   # TODO: handle variable arguments according to different neural optimziers
 
-  step_lr = 1e-2
-  mask_lr = 1e-2
-  # mask_lr = 1e-3
-  
-  # meta_optim = torch.optim.SGD(optimizer.parameters(), lr)
+  # meta_optim = torch.optim.SGD(
+    # optimizer.parameters(), lr=0.2, momentum=0.9, weight_decay=1e-6)
   meta_optim = torch.optim.Adam(
-      optimizer.parameters(), lr=lr)  # , weight_decay=1e-4)
+    optimizer.parameters(), lr=0.01, weight_decay=1e-5)
+  # scheduler = torch.optim.lr_scheduler.MultiStepLR(
+  #   meta_optim, milestones=[1, 2, 3, 4], gamma=0.1)
+  scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    meta_optim, mode='min', factor=0.5, patience=0, cooldown=0, verbose=1)
+  print(f'lr: {lr}')
 
-  p_feat = optimizer.feature_gen.parameters()
-  p_step = optimizer.step_gen.parameters()
-  p_mask = optimizer.mask_gen.parameters()
+  # step_lr = 1e-2
+  # mask_lr = 1e-2
+  # p_feat = optimizer.feature_gen.parameters()
+  # p_step = optimizer.step_gen.parameters()
+  # p_mask = optimizer.mask_gen.parameters()
+  #
+  # meta_optim = optim.Adam([
+  #     {'params':p_feat, 'lr':step_lr, 'weight_decay':1e-4},
+  #     {'params':p_step, 'lr':step_lr, 'weight_decay':1e-4},
+  #     {'params':p_mask, 'lr':mask_lr},
+  # ])
 
-  meta_optim = optim.Adam([
-      {'params':p_feat, 'lr':step_lr, 'weight_decay':1e-4},
-      {'params':p_step, 'lr':step_lr, 'weight_decay':1e-4},
-      {'params':p_mask, 'lr':mask_lr},
-  ])
-
-  print(f'step_lr: {step_lr} / mask_lr: {mask_lr}')
+  # print(f'step_lr: {step_lr} / mask_lr: {mask_lr}')
   data = data_cls()
   best_params = None
   best_valid_loss = 999999
@@ -71,24 +75,41 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module, n_epoch=20,
     result_dict = ResultDict()
 
     for j in train_pbar:
-      result_dict_ = optimizer.meta_optimize(meta_optim, data,
-                                             model_cls, optim_it, unroll, out_mul, 'train')
-      iter_loss = result_dict_['loss'].sum()
-      result_dict.append(test_num=j, loss_ever=iter_loss, **result_dict_)
-      train_pbar.set_description(f'train[loss:{iter_loss:10.3f}]')
+      train_data = data.sample_meta_train()
+      result_dict_ = optimizer.meta_optimize(meta_optim, train_data,
+        model_cls, optim_it, unroll, out_mul, 'train')
+      train_nll = result_dict_['train_nll'].mean()
+      test_nll = result_dict_['test_nll'].mean()
+      test_kld = result_dict_['test_kld'].mean()
+      test_total = result_dict_['test_total'].mean()
+      # result_dict.append(test_num=j, loss_ever=iter_loss, **result_dict_)
+      train_pbar.set_description(
+        f'train[train_nll:{train_nll:10.3f}]'
+        f'train[test_nll:{test_nll:10.3f}]'
+        f'train[test_kld:{train_kld:10.3f}]'
+        f'train[test_total:{test_total:10.3f}]'
+        )
+      if tf_write and save_dir is not None:
+        writer.add_scalar('0_train/0_outer/0_nll', train_nll, j)
+        writer.add_scalar('1_test/0_outer/0_nll', test_nll, j)
+        writer.add_scalar('1_test/0_outer/1_kld', train_kld, j)
+        writer.add_scalar('1_test/0_outer/2_nll', train_nll, j)
+
 
     mean_train_loss = result_dict['loss_ever'].mean()
     result_dict = ResultDict()
     valid_pbar = tqdm(range(n_valid), 'valid')
 
     for j in valid_pbar:
-      result_dict_ = optimizer.meta_optimize(
-          meta_optim, data, model_cls, optim_it, unroll, out_mul, 'valid')
+      test_data = data.sample_meta_test()
+      result_dict_ = optimizer.meta_optimize(meta_optim, test_data,
+        model_cls, optim_it, unroll, out_mul, 'valid')
       iter_loss = result_dict_['loss'].sum()
       result_dict.append(test_num=j, loss_ever=iter_loss, **result_dict_)
       valid_pbar.set_description(f'valid[loss:{iter_loss:10.3f}]')
 
     mean_valid_loss = result_dict['loss_ever'].mean()
+    # scheduler.step(mean_valid_loss)
 
     if tf_write and save_dir is not None:
       writer.add_scalar('data/mean_valid_loss', mean_valid_loss, i)
@@ -141,7 +162,7 @@ def test_normal(name, save_dir, data_cls, model_cls, optim_cls, optim_args,
   params_tracker = ParamsIndexTracker(n_tracks=10)
 
   for i in tests_pbar:
-    data = data_cls(training=False)
+    data = data_cls().loaders['test']
     model = C(model_cls())
     optimizer = optim_cls(model.parameters(), **optim_args)
 
@@ -152,21 +173,21 @@ def test_normal(name, save_dir, data_cls, model_cls, optim_cls, optim_args,
 
     for j in iter_pbar:
       iter_watch.touch()
-      loss = model(*data.sample())
+      loss = model(*data.load())
       optimizer.zero_grad()
       loss.backward()
-      before = model.params.detach('hard').flat
+      # before = model.params.detach('hard').flat
       optimizer.step()
-      update = model.params.detach('hard').flat - before
-      grad = model.params.get_flat().grad
+      # update = model.params.detach('hard').flat - before
+      # grad = model.params.get_flat().grad
       walltime += iter_watch.touch('interval')
       iter_pbar.set_description(f'optim_iteration[loss:{loss:10.6f}]')
       result_dict_iter.append(
           step_num=j, loss=loss, walltime=walltime,
-          **params_tracker(
-              grad=grad,
-              update=update,
-          ),
+          # **params_tracker(
+          #     grad=grad,
+          #     update=update,
+          # ),
       )
     result_dict_test.append(test_num=i, **result_dict_iter)
     loss = result_dict_iter['loss'].sum()

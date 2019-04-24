@@ -27,27 +27,43 @@ class FeatureGenerator(nn.Module):
     Outputs: feature for each coordinates
   """
 
-  def __init__(self, hidden_sz=32, batch_std_norm=True,
-               decay_values=[0.5, 0.9, 0.99, 0.999, 0.9999], drop_rate=0.5):
+  def __init__(self, hidden_sz=32, batch_std_norm=False, n_timecode=3,
+               b1=[0.0, 0.5, 0.9, 0.99, 0.999],
+               b2=[0.5, 0.9, 0.99, 0.999, 0.9999],
+               drop_rate=0.0):
     super().__init__()
-    assert isinstance(decay_values, (list, tuple))
-    self.input_sz = 2 + len(decay_values)  # grad, weight, momentums
+    assert all([isinstance(b, (list, tuple)) for b in (b1, b2)])
+    assert len(b1) == len(b2)
+    self.input_sz = len(b1) + n_timecode # grad, weight, momentums
     self.hidden_sz = hidden_sz
     self.batch_std_norm = batch_std_norm
-    self.decay_values = C(torch.tensor(decay_values))
-    self.momentum = None
-    self.momentum_sq = None
+    self.b1 = C(torch.tensor(b1))
+    self.b2 = C(torch.tensor(b2))
+    # self.mb1 = 1 - self.b1
+    # self.mb2 = 1 - self.b2
+    self.m = None  # 1st momentum vector
+    self.v = None  # 2nd momentum vector
+    self.b1_t = 1  # for bais-correction of 1st momentum
+    self.b2_t = 1  # for bais-correction of 2nd momentum
     self.drop_rate = drop_rate
     self.linear = nn.Linear(self.input_sz, self.hidden_sz)
     self.nonlinear = nn.ReLU(inplace=True)
+    self.eps = 1e-9
+    self.t = 0
+    self.t_scales = np.linspace(1, np.log(1000) / np.log(10), n_timecode)
+    self.t_encoder = lambda t: [np.tanh(3*t / 10**s - 1) for s in self.t_scales]
 
 
   def new(self):
     # reset momentum
-    self.momentum = None
+    self.m = None
+    self.v = None
+    self.b1_t = 1
+    self.b2_t = 1
+    self.t = 0
     return self
 
-  def forward(self, g, w, p=None, n=1, m_update=True):
+  def forward(self, g, p=None, n=1, step=True):
     """
     Args:
       g(tensor): current gradient (n_params x 1)
@@ -60,55 +76,85 @@ class FeatureGenerator(nn.Module):
       x(tensor): representation for step & mask generation
                  (n_params x hidden_sz)
     """
-    if self.momentum is None:
+    g_sq = g**2
+
+    if self.m is None:
       # Initialize momentum matrix
       #   momentum matrix: m[B, len(decay_values)]
       #   should keep track of momentums for each B dimension
-      momentum = g.repeat(1, len(self.decay_values))
-      # self.momentum_sq = (g**2).repeat(1, len(self.decay_values))
+      m = g.repeat(1, len(self.b1))
+      v = g_sq.repeat(1, len(self.b2))
     else:
       # Dimension will be matched by broadcasting
-      r = self.decay_values
-      momentum = r * self.momentum + (1 - r) * g
-      # self.momentum_sq = r * self.momentum_sq + (1 - r) * (g**2)
+      m = self.b1 * self.m + (1 - self.b1) * g
+      v = self.b2 * self.v + (1 - self.b2) * g_sq
 
-    # # regularization(as in Metz et al.)
-    # g_sq = g**2
+    # bias-correction
+    b1_t = self.b1_t * self.b1
+    b2_t = self.b2_t * self.b2
+    m_ = m.div(1 - b1_t)
+    v_ = v.div(1 - b2_t)
+
+    # Scaling
+    # import pdb; pdb.set_trace()
+    v_sqrt = v_.sqrt()#.detach()
+    scaled_g = g.div(v_sqrt + self.eps) # AdaGrad
+    scaled_m = m_.div(v_sqrt + self.eps)  # Adam
+
+    # Time encoding
+    self.t += 1
+    t = C(torch.tensor(self.t_encoder(self.t)))
+    t = t.repeat(scaled_g.size(0), 1)
+
+    # regularization(as in Metz et al.)
     if self.batch_std_norm:
       g = g.div(g.var(0, keepdim=True))
       # g_sq = g_sq.div(g_sq.var(0, keepdim=True))
       w = w.div(w.var(0, keepdim=True))
-    #
-    x = torch.cat([g, w, momentum], 1).detach()
+
+    # import pdb; pdb.set_trace()
+    # scaled_g = scaled_g.div(scaled_g.var(0, keepdim=True))
+    x = torch.cat([scaled_m, t], 1)#.detach()
     # x = torch.cat([g, g_sq], dim=1)
     # x = torch.cat([g, g_sq], dim=1)
-    if m_update:
-      self.momentum = momentum
+    if step:
+      self.m = m
+      self.v = v
+      self.b1_t = b1_t
+      self.b2_t = b2_t
     """Submodule inputs:
        x[n_params, 0]: current gradient
        x[n_params, 1]: current weight
        x[n_params, 2:]: momentums (for each decaying values)
     """
+    # import pdb; pdb.set_trace()
     assert x.size(1) == self.input_sz
     x = self.nonlinear(self.linear(x))
     assert x.size(1) == self.hidden_sz
 
     x = torch.cat([x] * n, dim=0)   # coordinate-wise feature
     x = F.dropout(x, p=self.drop_rate if p is None else p)
-    return x
+    return x, v_sqrt
 
 
 class StepGenerator(nn.Module):
-  def __init__(self, hidden_sz=32, out_temp=1e-5):
+  def __init__(self, hidden_sz=32, out_temp=1e-2, drop_rate=0.0):
     super().__init__()
-    self.output_sz = 2  # log learning rate, update direction
+    self.output_sz = 1  # log learning rate, update direction
     self.hidden_sz = hidden_sz
     self.out_temp = out_temp
     self.linear = nn.Linear(self.hidden_sz, self.output_sz)
+    # self.lr = C(torch.tensor(1.).log())
+    self.drop_rate = drop_rate
+    self.tanh = nn.Tanh()
     # self.nonliear = nn.Tanh()
     # NOTE: last nonliearity can be critical (avoid ReLU + exp > 1)
+    self.new()
 
-  def forward(self, x, n=1, debug=False):
+  def new(self):
+    self.log_lr = C(torch.tensor(1.).log())
+
+  def forward(self, x, v_sqrt, n=1, p=None, debug=False):
     """
     Args:
       x (tensor): representation for step & mask generation
@@ -118,6 +164,10 @@ class StepGenerator(nn.Module):
       step (tensor): update vector in the parameter space. (n_params x 1)
     """
     assert x.size(1) == self.hidden_sz
+
+    x = torch.cat([x] * n, dim=0)   # coordinate-wise feature
+    x = F.dropout(x, p=self.drop_rate if p is None else p)
+
     x = self.linear(x)
     """Submodule outputs:
       y[n_params, 0]: per parameter log learning rate
@@ -125,11 +175,20 @@ class StepGenerator(nn.Module):
     """
     assert x.size(1) == self.output_sz
     out_1 = x[:, 0]  # * self.out_temp
-    out_2 = x[:, 1]  # * self.out_temp # NOTE: normalizing?
-    # out_3 = x[:, 2]
-    # out_3 = out_3.div(out_3.norm(p=2).detach())
-    step = torch.exp(out_1 * self.out_temp) * out_2 * self.out_temp
+    # import pdb; pdb.set_trace()
+    step = out_1 * v_sqrt[:,-1].squeeze()
+    # out_2 = x[:, 1]  # * self.out_temp # NOTE: normalizing?
+    # # out_3 = x[:, 2]
+    # # out_3 = out_3.div(out_3.norm(p=2).detach())
+    # # import pdb; pdb.set_trace()
+    # self.log_lr = self.log_lr.detach() + out_1 * self.out_temp
+    # direction = out_2.div(out_2.norm(p=2).detach())
+    # step = torch.exp(self.log_lr) * direction
+    # step = self.tanh(step) * 0.01
+    if debug:
+      import pdb; pdb.set_trace()
     step = torch.clamp(step, max=0.01, min=-0.01)
+
     return torch.chunk(step, n)
 
   def forward_with_mask(self, x):

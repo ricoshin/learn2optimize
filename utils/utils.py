@@ -61,6 +61,13 @@ def getCudaManager(name):
   return _cuda_managers[name]
 
 
+def isnan(tensor):
+  assert isinstance(tensor, torch.Tensor)
+  if torch.isnan(tensor):
+    import pdb; pdb.set_trace()
+  return tensor
+
+
 def soft_detach(object):
   if isinstance(object, torch.Tensor):
     tensor = self(torch.tensor(object.data, requires_grad=True))

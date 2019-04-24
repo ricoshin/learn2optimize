@@ -64,18 +64,21 @@ def main():
       # 'sparsity_0.1',
       # 'sparsity_0.05',
       # 'sparsity_0.01',
-      'sparsity_0.005',
+      'drop_rate_0.0_no_mask',
+      'drop_rate_0.5_no_relative_params_10_obsrv_grad_clip',
       # 'sparsity_0.001',
       # 'sparsity_0.0005',
-      'sparsity_0.0001',
+      'dynamic_scaling_g_only_no_dropout_no_mask_time_encoding',
       # 'sparsity_0.00005',
-      # 'sparsity_0.00001',
+      # 'sparsity_0.00001',class
       # 'sparsity_0.000005',
       'sparsity_0.000001',
-      'baseline'
+      # 'baseline'
     ]
     dir_name = product(dirs, optimizer_names)
     optimizer_names = [os.path.join(dir, name) for (dir, name) in dir_name]
+
+  import pdb; pdb.set_trace()
 
   for name in optimizer_names:
     # np.random.seed(0)

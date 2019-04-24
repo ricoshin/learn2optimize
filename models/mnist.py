@@ -46,13 +46,13 @@ class DataloaderWrapper(object):
 
 class MNISTData:
   """Current data scheme is as follows:
-    - train data
-      - outer-train data(70%): shuffled at every meta-iteration
-        - inner-train data: for model objective w.r.t. theta. (50%)
-        - inner-valid data: for meta-optimizer objective w.r.t phi. (50%)
-      - outer-valid data(30%)
+    - train data (100%/60k)
+      - outer-train data(70%/42k): shuffled at every meta-iteration.
+        - inner-train data: for model objective w.r.t. theta. (50%/21k)
+        - inner-valid data: for meta-optimizer objective w.r.t phi. (50%/21k)
+      - outer-valid data(30%/18k)
         - this will be used to determine when to do early-stopping
-    - test data: held-out for meta-test
+    - test data (10k): held-out for meta-test
   """
 
   def __init__(self, outer_train_ratio=0.7, inner_train_ratio=0.5,
@@ -60,51 +60,46 @@ class MNISTData:
     self.batch_size = batch_size
     self.outer_train_ratio = outer_train_ratio
     self.inner_train_ratio = inner_train_ratio
-
     train_data = datasets.MNIST('./mnist', train=True, download=True,
                                 transform=torchvision.transforms.ToTensor())
     test_data = datasets.MNIST('./mnist', train=False, download=True,
                                transform=torchvision.transforms.ToTensor())
-    self.train_data, self.valid_data = self._random_split(
-        train_data, outer_train_ratio)
-    self.test_data = test_data
-    self.loaders = {}
-    self.iters = {}
-    self._initialize()
+    data_ = data.dataset.ConcatDataset([train_data, test_data])
+    self.meta_train_d, self.meta_test_d = self._fixed_split(data_)
 
-  # def __get__(self, instance, owner):
-  #   return getattr(instance, 'loaders')
-
-  def _initialize(self):
-    attrs = ['train_data', 'valid_data', 'test_data']
-    assert all(hasattr(self, attr) for attr in attrs)
-    self.new_train_data()
-    self.new_valid_data()
-    self.new_test_data()
-
-  def new_train_data(self):
-    inner_train, inner_valid = self._random_split(
-        self.train_data, self.inner_train_ratio)
-    self.loaders['train'] = self._get_wrapped_dataloader(
-      self.train_data, self.batch_size)
-    self.loaders['inner_train'] = self._get_wrapped_dataloader(
+  def sample_meta_train(self, ratio=0.5):
+    meta_train = {}
+    inner_train, inner_test = self._random_split(self.meta_train_d, ratio)
+    meta_train['train'] = self._get_wrapped_dataloader(
       inner_train, self.batch_size)
-    self.loaders['inner_valid'] = self._get_wrapped_dataloader(
-      inner_valid, self.batch_size)
+    meta_train['test'] = self._get_wrapped_dataloader(
+      inner_test, self.batch_size)
+    return meta_train
 
-  def new_valid_data(self):
-    self.loaders['valid'] = self._get_wrapped_dataloader(
-      self.valid_data, self.batch_size)
+  def sample_meta_test(self, ratio=0.5):
+    meta_test = {}
+    inner_train, inner_test = self._random_split(self.meta_test_d, ratio)
+    meta_test['train'] = self._get_wrapped_dataloader(
+      inner_train, self.batch_size)
+    meta_test['test'] = self._get_wrapped_dataloader(
+      inner_test, self.batch_size)
+    return meta_test
 
-  def new_test_data(self):
-    self.loaders['test'] = self._get_wrapped_dataloader(
-      self.test_data, self.batch_size)
-
-  def _random_split(self, dataset, ratio):
+  def _random_split(self, dataset, ratio=0.5):
+    assert isinstance(dataset, data.dataset)
     n_total = len(dataset)
     n_a = int(n_total * ratio)
     n_b = n_total - n_a
     data_a, data_b = data.random_split(dataset, [n_a, n_b])
+    return data_a, data_b
+
+  def _fixed_split(self, dataset, ratio=0.5):
+    assert isinstance(dataset, data.dataset)
+    id_mid = len(dataset) // 2
+    id_a = range(n_toal)[:id_mid]
+    id_b = range(n_toal)[id_mid:]
+    data_a = data.Subset(dataset, id_a)
+    data_b = data.Subset(dataset, id_b)
     return data_a, data_b
 
   # def _fixed_split(self, dataset, ratio):

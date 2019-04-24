@@ -67,7 +67,7 @@ class Optimizer(nn.Module):
       self.eval()
       inner_data = data.loaders['valid']
       outer_data = None
-    elif mode == 'eval':
+    elif mode == 'test':
       self.eval()
       inner_data = data.loaders['test']
       outer_data = None
@@ -115,7 +115,7 @@ class Optimizer(nn.Module):
       for get, set in batch_manager.iterator():
         updates, new_states = self(get.grad().detach(), get.states())
         set.states(new_states)
-        set.params(get.params() + updates * 0.1)
+        set.params(get.params() + updates * out_mul)
         if not mode == 'train':
           set.updates(updates)
       ##########################################################################
@@ -124,7 +124,7 @@ class Optimizer(nn.Module):
       if mode == 'train' and iteration % unroll == 0:
         meta_optimizer.zero_grad()
         unroll_losses.backward()
-        # nn.utils.clip_grad_norm_(self.parameters(), 10)
+        nn.utils.clip_grad_value_(self.parameters(), 0.1)
         meta_optimizer.step()
         unroll_losses = 0
 
