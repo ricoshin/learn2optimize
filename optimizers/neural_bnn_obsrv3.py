@@ -52,7 +52,7 @@ class Optimizer(nn.Module):
     result_dict = ResultDict()
     unroll_losses = 0
     walltime = 0
-    test_kld = torch.tensor(0.)
+    kld_test = torch.tensor(0.)
 
     params = C(model_cls()).params
     self.feature_gen.new()
@@ -60,8 +60,6 @@ class Optimizer(nn.Module):
     iter_pbar = tqdm(range(1, optim_it + 1), 'Inner_loop')
     iter_watch = utils.StopWatch('Inner_loop')
 
-    do_masking = True
-    sparse_r = {}  # sparsity
     layer_size = {'layer_0': 500, 'layer_1': 10}  # NOTE: make it smarter
 
     for iteration in iter_pbar:
@@ -74,49 +72,80 @@ class Optimizer(nn.Module):
       else:
         debug_2 = False
 
-      result = {}
+      cand_params = []
+      cand_losses = []
+      sparse_r = {}  # sparsity
+      best_loss = 9999999
+      best_params = None
+      n_samples = 5
+
       iter_watch.touch()
       model_train = C(model_cls(params=params.detach()))
-      train_nll = model_train(*data['in_train'].load())
-      train_nll.backward()
+      nll_train = model_train(*data['in_train'].load())
+      nll_train.backward()
 
       g = model_train.params.grad.flat.detach()
       w = model_train.params.flat.detach()
 
-      # step & mask genration
       feature, v_sqrt = self.feature_gen(g)
-      step = self.step_gen(feature, v_sqrt, debug=debug_1)
-      step = params.new_from_flat(step[0])
-      size = params.size().unflat()
 
-      if do_masking:
-        kld = self.mask_gen(feature, size, debug=debug_1)
-        test_kld = kld / data['in_test'].full_size #* 0.00005
+      size = params.size().unflat()
+      kld = self.mask_gen(feature, size)
+
+      for i in range(n_samples):
+        # step & mask genration
         mask = self.mask_gen.sample_mask()
+        step = self.step_gen(feature, v_sqrt, debug=debug_1)
+        step_ = params.new_from_flat(step[0])
+
+        # prunning
         mask = ParamsFlattener(mask)
         mask_layout = mask.expand_as(params)
-        # NOTE: do this automatically
-        for k, v in layer_size.items():
-          r = (mask > 1e-6).sum().unflat[k].tolist() / v
-          sparse_r[f"sparse_{k.split('_')[1]}"] = r
-        step = step * mask_layout
+        step_ = step_ * mask_layout
+        params_ = params + step_
+        sparse_params = params_.prune(mask > 1e-6)
 
-      # update
-      params = params + step
+        if sparse_params.size().unflat()['mat_0'][1] == 0:
+          continue
+        if debug_2:
+          import pdb; pdb.set_trace()
+        # cand_loss = model(*outer_data_s)
+        sparse_model = C(model_cls(params=sparse_params.detach()))
+        loss = sparse_model(*data['in_train'].load())
+        try:
+          if loss < best_loss:
+            best_loss = loss
+            best_params = params_
+            best_mask = mask
+            del loss, params_, mask
+        except:
+          best_params = params_
+          best_mask = mask
+          del params_, mask
+        del sparse_params, sparse_model, mask_layout
+
+      if best_params is not None:
+        params = best_params
+
+      for k, v in layer_size.items():
+        r = (best_mask > 1e-6).sum().unflat[k].tolist() / v
+        sparse_r[f"sparse_{k.split('_')[1]}"] = r
 
       if not mode == 'train':
         # meta-test time cost (excluding inner-test time)
         walltime += iter_watch.touch('interval')
 
       model_test = C(model_cls(params=params))
-      test_nll = utils.isnan(model_test(*data['in_test'].load()))
+      nll_test = utils.isnan(model_test(*data['in_test'].load()))
+      kld_teset = kld / data['in_test'].full_size
+      total_test = nll_test +  kld_test
 
       if debug_2:
         import pdb; pdb.set_trace()
 
       if mode == 'train':
         if not iteration % unroll == 0:
-          unroll_losses += test_nll + test_kld
+          unroll_losses += total_test
         else:
           meta_optimizer.zero_grad()
           unroll_losses.backward()
@@ -126,7 +155,7 @@ class Optimizer(nn.Module):
 
       if not mode == 'train' or iteration % unroll == 0:
         # self.mask_gen.detach_lambdas_()
-        # self.step_gen.lr = self.step_gen.log_lr.detach()
+        self.step_gen.lr = self.step_gen.log_lr.detach()
         params = params.detach_()
 
       if mode == 'train':
@@ -134,14 +163,14 @@ class Optimizer(nn.Module):
         walltime += iter_watch.touch('interval')
 
       # result dict
-      result.update(
-        train_nll=train_nll.tolist(),
-        test_nll=test_nll.tolist(),
-        test_kld=test_kld.tolist(),
+      result = dict(
+        nll_train=nll_train.tolist(),
+        nll_test=nll_test.tolist(),
+        kld_test=kld_test.tolist(),
+        total_test=total_test.tolist(),
         walltime=walltime,
-        **sparse_r,
+        **sparse_r
         )
-
       result_dict.append(result)
       log_pbar(result, iter_pbar)
       # desc = [f'{k}: {v:5.5}' for k, v in result.items()]

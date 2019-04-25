@@ -175,8 +175,7 @@ class StepGenerator(nn.Module):
     """
     assert x.size(1) == self.output_sz
     out_1 = x[:, 0]  # * self.out_temp
-    # import pdb; pdb.set_trace()
-    step = out_1 * v_sqrt[:,-1].squeeze()
+    step = out_1 * v_sqrt[:,-1].repeat(n)
     # out_2 = x[:, 1]  # * self.out_temp # NOTE: normalizing?
     # # out_3 = x[:, 2]
     # # out_3 = out_3.div(out_3.norm(p=2).detach())
@@ -381,39 +380,46 @@ class MaskGenerator(nn.Module):
     # out = self.out_layer(inp.t())
 
     out = self.out_layer(x_set)
-    a = F.softplus(out[:, 0].clamp(min=-10.))
-    b = F.softplus(out[:, 1].clamp(min=-10., max=50.))
-
-    # out[:, 0] -> mask
-    mask, pi = self.beta_bern(a, b)
-
-    # mask_logit = out[:, 0]
-    # mask = self.sigmoid(mask_logit * self.sigmoid_temp)
-    # kld = mask.norm(p=1)
-    mask = torch.chunk(mask, n)
-    pi = torch.chunk(pi, n)
-    kld = []
-    # for a, b in zip():
-    #   # import pdb; pdb.set_trace()
-    #   kld.append()
-
-    out_list = []
+    self.a = F.softplus(out[:, 0].clamp(min=-10.))
+    self.b = F.softplus(out[:, 1].clamp(min=-10., max=50.))
+    self.n = [k for k in set.keys()]
     keys = [k for k in set.keys() if k.split('_')[1] == '0']
-    split_sizes = [set[k].size(0) for k in keys]
+    self.s = [set[k].size(0) for k in keys]
+    kld = self.beta_bern.compute_kld(self.a, self.b)
+  #
+    return kld
+  #
+  #
+  def sample_mask(self):
+    mask, pi = self.beta_bern(self.a, self.b)
+    m = torch.split(mask, self.s, dim=0)
+    return {'layer_' + n.split('_')[0]: m for n, m in zip(self.n, m)}
 
-    for m, p, a, b in zip(mask, pi, torch.chunk(a, n), torch.chunk(b, n)):
-      m = torch.split(m, split_sizes, dim=0)
-      p = torch.split(p, split_sizes, dim=0)
-      name = [k for k in set.keys()]
-      out_list.append((
-        {'layer_' + n.split('_')[0]: m for n, m in zip(name, m)},
-        {'layer_' + n.split('_')[0]: p for n, p in zip(name, p)},
-        self.beta_bern.compute_kld(a, b),
-      ))
 
+
+
+    # mask = torch.chunk(mask, n)
+    # pi = torch.chunk(pi, n)
+    # kld = []
     #
-    # mask = torch.split(mask, [s[0] for s in x_set_sizes], dim=0)
-    # name = [n for n in layerwise.keys()]
-    # mask = {'layer_' + n: m for n, m in zip(name, mask)}
-
-    return out_list
+    #
+    # out_list = []
+    # keys = [k for k in set.keys() if k.split('_')[1] == '0']
+    # split_sizes = [set[k].size(0) for k in keys]
+    #
+    # for m, p, a, b in zip(mask, pi, torch.chunk(a, n), torch.chunk(b, n)):
+    #   m = torch.split(m, split_sizes, dim=0)
+    #   p = torch.split(p, split_sizes, dim=0)
+    #   name = [k for k in set.keys()]
+    #   out_list.append((
+    #     {'layer_' + n.split('_')[0]: m for n, m in zip(name, m)},
+    #     {'layer_' + n.split('_')[0]: p for n, p in zip(name, p)},
+    #     self.beta_bern.compute_kld(a, b),
+    #   ))
+    #
+    # #
+    # # mask = torch.split(mask, [s[0] for s in x_set_sizes], dim=0)
+    # # name = [n for n in layerwise.keys()]
+    # # mask = {'layer_' + n: m for n, m in zip(name, mask)}
+    #
+    # return out_list

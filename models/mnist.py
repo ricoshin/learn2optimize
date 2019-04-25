@@ -57,7 +57,8 @@ class MNISTData:
       - inner-test data(5K)
   """
 
-  def __init__(self, batch_size=128):
+  def __init__(self, batch_size=128, fixed=False):
+    self.fixed = fixed
     self.batch_size = batch_size
     train_data = datasets.MNIST('./mnist', train=True, download=True,
                                 transform=torchvision.transforms.ToTensor())
@@ -65,33 +66,40 @@ class MNISTData:
                                transform=torchvision.transforms.ToTensor())
     self.m_train_d, self.m_valid_d, self.m_test_d = self._meta_data_split(
       train_data, test_data)
+    self.meta_train = self.meta_valid = self.meta_test = {}
 
-  def sample_meta_train(self, ratio=0.5):
-    meta_train = {}
+  def sample_meta_train(self, ratio=0.5, fixed=None):
+    fixed = fixed if fixed is not None else self.fixed
+    if fixed and self.meta_train:
+      return self.meta_train
     inner_train, inner_test = self._random_split(self.m_train_d, ratio)
-    meta_train['in_train'] = self._get_wrapped_dataloader(
+    self.meta_train['in_train'] = self._get_wrapped_dataloader(
       inner_train, self.batch_size)
-    meta_train['in_test'] = self._get_wrapped_dataloader(
+    self.meta_train['in_test'] = self._get_wrapped_dataloader(
       inner_test, self.batch_size)
-    return meta_train
+    return self.meta_train
 
-  def sample_meta_valid(self, ratio=0.75):
-    meta_valid = {}
+  def sample_meta_valid(self, ratio=0.75, fixed=None):
+    fixed = fixed if fixed is not None else self.fixed
+    if fixed and self.meta_valid:
+      return self.meta_valid
     inner_train, inner_test = self._random_split(self.m_valid_d, ratio)
-    meta_valid['in_train'] = self._get_wrapped_dataloader(
+    self.meta_valid['in_train'] = self._get_wrapped_dataloader(
       inner_train, self.batch_size)
-    meta_valid['in_test'] = self._get_wrapped_dataloader(
+    self.meta_valid['in_test'] = self._get_wrapped_dataloader(
       inner_test, self.batch_size)
-    return meta_valid
+    return self.meta_valid
 
-  def sample_meta_test(self, ratio=0.75):
-    meta_test = {}
+  def sample_meta_test(self, ratio=0.75, fixed=None):
+    fixed = fixed if fixed is not None else self.fixed
+    if fixed and self.meta_test:
+      return self.meta_test
     inner_train, inner_test = self._random_split(self.m_test_d, ratio)
-    meta_test['in_train'] = self._get_wrapped_dataloader(
+    self.meta_test['in_train'] = self._get_wrapped_dataloader(
       inner_train, self.batch_size)
-    meta_test['in_test'] = self._get_wrapped_dataloader(
+    self.meta_test['in_test'] = self._get_wrapped_dataloader(
       inner_test, self.batch_size)
-    return meta_test
+    return self.meta_test
 
   def _meta_data_split(self, train_data, test_data):
     data_ = data.dataset.ConcatDataset([train_data, test_data])
@@ -109,9 +117,10 @@ class MNISTData:
 
   def _fixed_split(self, dataset, ratio=0.5):
     assert isinstance(dataset, data.dataset.Dataset)
-    id_mid = len(dataset) // 2
-    id_a = range(len(dataset))[:id_mid]
-    id_b = range(len(dataset))[id_mid:]
+    n_total = len(dataset)
+    thres = int(n_total * ratio)
+    id_a = range(len(dataset))[:thres]
+    id_b = range(len(dataset))[thres:]
     data_a = data.Subset(dataset, id_a)
     data_b = data.Subset(dataset, id_b)
     return data_a, data_b
@@ -177,7 +186,7 @@ class MNISTModel(nn.Module):
     self._activations = {}
     self.nonlinear = nn.Sigmoid()
     self.loss = nn.NLLLoss()
-    
+
   # def all_named_parameters(self):
   #   return [(k, v) for k, v in self.params.dict.items()]
 

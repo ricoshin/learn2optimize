@@ -10,18 +10,28 @@ class MaskGenerator(object):
     pass
 
   @classmethod
-  def topk(cls, grad, *args, **kwargs):
-    # topk_n = cls.compute_topk_n_with_ratio(grad, 0.1)
-    topk_n = cls.compute_topk_n_with_number(grad, 20)
+  def topk(cls, grad, topk_ratio, topk_num):
+    assert all([isinstance(k, bool) for k in [topk_ratio, topk_num]])
+    assert (topk_ratio is True) != (topk_num is True)
+    # has to be set either of the two, not both
+    if topk_ratio:
+      topk_n = cls.compute_topk_n_with_ratio(grad, topk_ratio)
+    else:
+      topk_n = cls.compute_topk_n_with_number(grad, topk_num)
     abs_sum = grad.abs().sum(0, keepdim=True)
     ids = abs_sum.topk_id(topk_n, sorted=False)
     mask = abs_sum.new_zeros(abs_sum.size()).scatter_float_(1, ids, 1)
     return mask
 
   @classmethod
-  def randk(cls, grad, *args, **kwargs):
-    # topk_n = cls.compute_topk_n_with_ratio(grad, 0.1)
-    topk_n = cls.compute_topk_n_with_number(grad, 20)
+  def randk(cls, grad):
+    assert all([isinstance(k, bool) for k in [topk_ratio, topk_num]])
+    assert (topk_ratio is True) != (topk_num is True)
+    # has to be set either of the two, not both
+    if topk_ratio:
+      topk_n = cls.compute_topk_n_with_ratio(grad, topk_ratio)
+    else:
+      topk_n = cls.compute_topk_n_with_number(grad, topk_num)
     sizes = grad.tsize(1)
     rand_id = lambda k, v: random.sample(range(v), topk_n[k])
     sizes = {k: rand_id(k, v) for k, v in sizes.items()}

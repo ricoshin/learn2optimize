@@ -115,7 +115,7 @@ def train_neural(
     # Log TF-event: averaged valid loss
     mean_over_all = result_outer.mean()
     log_tf_event(mean_over_all, tf_writer, i, 'meta_valid_outer')
-    last_valid = mean_over_all['nll_test']
+    last_valid = mean_over_all['test_nll']
     # Save current snapshot
     if last_valid < best_valid:
       best_valid = last_valid
@@ -159,8 +159,8 @@ def test_neural(name, save_dir, learned_params, data_cls, model_cls,
       iter_test, unroll, out_mul, tf_writer, 'test')
     result_outer.append(result_inner)
     # Update test progress bar
-    last_test = result_inner.mean()['nll_test']
-    mean_test = result_outer.mean()['nll_test']
+    last_test = result_inner.mean()['test_nll']
+    mean_test = result_outer.mean()['test_nll']
     if last_test < best_test:
       best_test = last_test
     result_test = dict(
@@ -207,19 +207,19 @@ def test_normal(name, save_dir, data_cls, model_cls, optim_cls, optim_args,
     for k in iter_pbar:
       watch.touch()
       # Inner-training loss
-      nll_train = model(*data['in_train'].load())
+      train_nll = model(*data['in_train'].load())
       optimizer.zero_grad()
-      nll_train.backward()
+      train_nll.backward()
       # before = model.params.detach('hard').flat
       optimizer.step()
       walltime += watch.touch('interval')
       # Inner-test loss
-      nll_test = model(*data['in_test'].load())
+      test_nll = model(*data['in_test'].load())
       # update = model.params.detach('hard').flat - before
       # grad = model.params.get_flat().grad
       result_iter = dict(
-        nll_train=nll_train.tolist(),
-        nll_test=nll_test.tolist(),
+        train_nll=train_nll.tolist(),
+        test_nll=test_nll.tolist(),
         walltime=walltime,
         )
       log_pbar(result_iter, iter_pbar)
@@ -227,8 +227,8 @@ def test_normal(name, save_dir, data_cls, model_cls, optim_cls, optim_args,
 
     result_outer.append(result_inner)
     # Update test progress bar
-    last_test = result_inner.mean()['nll_test']
-    mean_test = result_outer.mean()['nll_test']
+    last_test = result_inner.mean()['test_nll']
+    mean_test = result_outer.mean()['test_nll']
     if last_test < best_test:
       best_test = last_test
     result_test = dict(

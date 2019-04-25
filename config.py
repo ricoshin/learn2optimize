@@ -40,11 +40,11 @@ _neural_optimizers_quadratic = odict({
 _neural_optimizers_mnist = odict({
     'RNN-base': {
         'train_args': odict(n_epoch=50, n_train=10, n_valid=10, iter_train=300,
-                            iter_valid=1000, unroll=20, lr=0.0007),
+                            iter_valid=300, unroll=20, lr=0.0007),
     },
     'Proposed': {
-        'train_args': odict(n_epoch=2, n_train=2, n_valid=2, iter_train=10,
-                            iter_valid=10, unroll=20, lr=0.01),
+        'train_args': odict(n_epoch=20, n_train=20, n_valid=5, iter_train=500,
+                            iter_valid=1000, unroll=20, lr=0.01),
     },
 })
 
@@ -56,7 +56,7 @@ _neural_optimizers = odict({
 
 _common_neural_args = {
     'RNN-base': odict(optim_module='neural_base', preproc=True, out_mul=0.1),
-    'Proposed': odict(optim_module='neural_bnn_obsrv', preproc=True, out_mul=0.1),
+    'Proposed': odict(optim_module='neural_bnn_obsrv3', preproc=True, out_mul=0.1),
 }
 
 ################################################################################
@@ -106,7 +106,7 @@ _normal_optimizers = odict({
 })
 
 _common_test_args_debug = odict(n_test=5, iter_test=200)
-_common_test_args = odict(n_test=2, iter_test=10)
+_common_test_args = odict(n_test=5, iter_test=5000)
 
 ################################################################################
 
@@ -118,10 +118,10 @@ train_optimizers = ['Proposed']
 # test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM', 'RNN-base', 'Proposed')
 # test_optimizers = ['ADAM']
 # test_optimizers = ['RNN-base']
-# test_optimizers = ['Proposed']
-test_optimizers = ['Proposed', 'ADAM']
+test_optimizers = ['Proposed']
+# test_optimizers = ['Proposed', 'ADAM']
 # test_optimizers = ['RNN-base','Proposed', 'ADAM']
-# test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM', 'RNN-base', 'Proposed')
+# test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM', 'Proposed')
 # train_optimizers = ()
 # test_optimizers = ('SGD')
 # test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM')
