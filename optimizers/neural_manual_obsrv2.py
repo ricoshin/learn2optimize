@@ -63,7 +63,7 @@ class Optimizer(nn.Module):
     lr = 0.1
     topk = False
     n_sample = 10
-    topk_decay = False
+    topk_decay = True
     recompute_grad = False
 
     self.topk_ratio = 0.5

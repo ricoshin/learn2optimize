@@ -30,7 +30,7 @@ class MaskGenerator(object):
       grad.unflat['bias_1'].unsqueeze(0)], dim=0).abs().sum(0)
     abs_sum = ParamsFlattener({'layer_0': layer_0, 'layer_1': layer_1})
     ids = abs_sum.topk_id(topk_n, sorted=False)
-    ids = {k: v.view(1, -1) for k, v in ids.unflat.items()}
+    ids = {k: v.view(1, -1).long() for k, v in ids.unflat.items()}
     # ids = abs_sum.topk_id(topk_n, sorted=False)
     mask = ParamsFlattener(
       {k: C(torch.zeros(1, v)) for k, v in set_size.items()})
@@ -49,7 +49,7 @@ class MaskGenerator(object):
     sizes = set_size
     rand_id = lambda k, v: random.sample(range(v), topk_n[k])
     sizes = {k: rand_id(k, v) for k, v in sizes.items()}
-    ids = {k: torch.tensor(v).cuda().view(1, -1) for k, v in sizes.items()}
+    ids = {k: torch.tensor(v).cuda().view(1, -1).long() for k, v in sizes.items()}
     # import pdb; pdb.set_trace()
     abs_sum = grad.abs().sum(0, keepdim=True) # fix later!
     mask = ParamsFlattener(

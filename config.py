@@ -112,21 +112,21 @@ _common_test_args = odict(n_test=5, iter_test=5000)
 
 ################################################################################
 
-# train_optimizers = []
+train_optimizers = []
 # train_optimizers = ['RNN-base']
-train_optimizers = ['Proposed']
+# train_optimizers = ['Proposed']
 # train_optimizers = ['RNN-base','Proposed']
 # train_optimizers = ['RNN-base', 'Proposed', 'Proposed']
 # test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM', 'RNN-base', 'Proposed')
 # test_optimizers = ['ADAM']
 # test_optimizers = ['RNN-base']
-test_optimizers = ['Proposed']
+# test_optimizers = ['Proposed']
 # test_optimizers = ['Proposed', 'ADAM']
 # test_optimizers = ['RNN-base','Proposed', 'ADAM']
 # test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM', 'Proposed')
 # train_optimizers = ()
 # test_optimizers = ('SGD')
-# test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM')
+test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM')
 
 ################################################################################
 """config getters."""
