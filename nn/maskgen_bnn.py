@@ -138,7 +138,7 @@ class FeatureGenerator(nn.Module):
 
 
 class StepGenerator(nn.Module):
-  def __init__(self, hidden_sz=32, out_temp=1e-2, drop_rate=0.0):
+  def __init__(self, hidden_sz=32, out_temp=1e-2, drop_rate=0.2):
     super().__init__()
     self.output_sz = 1  # log learning rate, update direction
     self.hidden_sz = hidden_sz

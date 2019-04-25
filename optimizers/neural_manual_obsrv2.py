@@ -7,10 +7,11 @@ import torch.nn.functional as F
 from models.model_helpers import ParamsIndexTracker
 # from nn.maskgen_rnn import MaskGenerator
 from nn.maskgen_topk import MaskGenerator
+from nn.rnn_base import RNNBase
+from optimize import log_pbar
 from optimizers.optim_helpers import (BatchManagerArgument, DefaultIndexer,
                                       OptimizerBatchManager, OptimizerParams,
                                       OptimizerStates, StatesSlicingWrapper)
-from nn.rnn_base import RNNBase
 from tqdm import tqdm
 from utils import utils
 from utils.result import ResultDict
@@ -37,7 +38,7 @@ class Optimizer(nn.Module):
     optimizer_params.to_optimizer(self)
 
   def meta_optimize(self, meta_optimizer, data, model_cls, optim_it, unroll,
-                    out_mul, mode):
+                    out_mul, tf_writer=None, mode='train'):
     assert mode in ['train', 'valid', 'test']
     if mode == 'train':
       self.train()
@@ -50,21 +51,24 @@ class Optimizer(nn.Module):
 
     params = C(model_cls()).params
 
-    lr_sgd = 0.2
-    lr_adam = 0.001
-    sgd = torch.optim.SGD(model.parameters(), lr=lr_sgd)
-    adam = torch.optim.Adam(model.parameters())
-    adagrad = torch.optim.Adagrad(model.parameters())
+    # lr_sgd = 0.2
+    # lr_adam = 0.001
+    # sgd = torch.optim.SGD(model.parameters(), lr=lr_sgd)
+    # adam = torch.optim.Adam(model.parameters())
+    # adagrad = torch.optim.Adagrad(model.parameters())
 
     iter_pbar = tqdm(range(1, optim_it + 1), 'Inner_loop')
     iter_watch = utils.StopWatch('Inner_loop')
 
-    loss_decay = 1.0
-    dist_list = []
-    dense_rank = 0
-    sparse_rank = 0
-    dense_rank_list = []
-    sparse_rank_list = []
+    lr = 0.1
+    topk = False
+    n_sample = 10
+    topk_decay = False
+    recompute_grad = False
+
+    self.topk_ratio = 0.5
+    # self.topk_ratio = 1.0
+    set_size = {'layer_0': 500, 'layer_1': 10}  # NOTE: do it smarter
 
     for iteration in iter_pbar:
       # # conventional optimizers with API
@@ -75,77 +79,67 @@ class Optimizer(nn.Module):
       # loss_detached = loss
 
       iter_watch.touch()
-      model_dense = C(model_cls(params=params.detach()))
-      loss_dense = model_dense(*data['in_train'].load())
-      loss_dense.backward()
+      model_train = C(model_cls(params=params.detach()))
+      train_nll = model_train(*data['in_train'].load())
+      train_nll.backward()
 
+      params = model_train.params.detach()
+      grad = model_train.params.grad.detach()
+      act = model_train.activations.detach()
 
-      # # conventional optimizers with manual SGD
-      # params = model_detached.params + model_detached.params.grad * (-0.2)
+      # conventional optimizers with manual SGD
+      params_good = params + grad * (-lr)
+      grad_good = grad
 
-      # iter_pbar.set_description(f'optim_iteration[loss:{loss_detached}]')
-      masks = []
-      # sparse_old_loss = []
-      # sparse_new_loss = []
-      sparse_loss = []
-      dense_loss = []
-      candidates = []
-
-      lr = 1.0
-      n_sample = 10
-      recompute_grad = False
-      # best_loss_sparse = 999999
-
+      best_loss_sparse = 999999
       for i in range(n_sample):
-
-        mask = MaskGenerator.randk(
-          grad=model_detached.params.grad.detach(),
-          topk_ratio=0.1
-          )
+        mask_gen = MaskGenerator.topk if topk else MaskGenerator.randk
+        mask = mask_gen(grad=grad, act=act, topk=self.topk_ratio)
 
         if recompute_grad:
           # recompute gradients again using prunned network
-          params_sparse = model_dense.params.prune(mask)
+          params_sparse = params.prune(mask)
           model_sparse = C(model_cls(params=params_sparse.detach()))
           loss_sparse = model_sparse(*data['in_train'].load())
           loss_sparse.backward()
-          grads = model_sparse.params.grad
+          grad_sparse = model_sparse.params.grad
         else:
           # use full gradients but sparsified
-          params_sparse = model_dense.params.prune(mask)
-          grads = model_detached.params.grad.prune(mask)
+          params_sparse = params.prune(mask)
+          grad_sparse = grad.prune(mask)
 
-        params_sparse = params_sparse + grads*(-lr)  # SGD
-        model_sparse = C(model_cls(params=params_sparse.detach()))
+        params_sparse_ = params_sparse + grad_sparse * (-lr)  # SGD
+        model_sparse = C(model_cls(params=params_sparse_.detach()))
         loss_sparse = model_sparse(*data['in_train'].load())
         if loss_sparse < best_loss_sparse:
           best_loss_sparse = loss_sparse
-          best_params_sparse = params_sparse
+          best_params_sparse = params_sparse_
+          best_grads = grad_sparse
           best_mask = mask
-          best_grads = grads
 
-      # params = model_detached.params
-      params = model_dense.params.sparse_update(best_mask, best_grads*(-lr))
+      # below lines are just for evaluation purpose (excluded from time cost)
+      walltime += iter_watch.touch('interval')
+      # decayu topk_ratio
+      if topk_decay:
+        self.topk_ratio *= 0.999
 
-      model_dense = C(model_cls(params=params.detach()))
-      loss_test = model_dense(*data['in_test'].load())
-      loss_test.backward()
+      # update!
+      params = params.sparse_update(best_mask, best_grads * (-lr))
 
+      # generalization performance
+      model_test = C(model_cls(params=params.detach()))
+      test_nll = model_test(*data['in_test'].load())
 
-      iter_pbar.set_description(f'optim_iteration[dense_loss:{loss_dense.tolist():5.5}/sparse_loss:{loss_prunned.tolist():5.5}]')
-      # iter_pbar.set_description(f'optim_iteration[loss:{loss_dense.tolist()}/dist:{dist.tolist()}]')
-      # torch.optim.SGD(sparse_params, lr=0.1).step()
-
-      result_dict.append(loss=loss_detached)
-      if not mode == 'train':
-        result_dict.append(
-            walltime=walltime,
-            # **self.params_tracker(
-            #   grad=grad,
-            #   update=batch_arg.updates,
-            # )
-        )
-    dist_mean = torch.stack(dist_list, 0).mean()
-    import pdb; pdb.set_trace()
+      # result dict
+      result = dict(
+          train_nll=train_nll.tolist(),
+          test_nll=test_nll.tolist(),
+          sparse_0=self.topk_ratio,
+          sparse_1=self.topk_ratio,
+      )
+      result_dict.append(result)
+      log_pbar(result, iter_pbar)
+      # desc = [f'{k}: {v:5.5}' for k, v in result.items()]
+      # iter_pbar.set_description(f"inner_loop [ {' / '.join(desc)} ]")
 
     return result_dict

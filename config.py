@@ -56,7 +56,9 @@ _neural_optimizers = odict({
 
 _common_neural_args = {
     'RNN-base': odict(optim_module='neural_base', preproc=True, out_mul=0.1),
-    'Proposed': odict(optim_module='neural_bnn_obsrv3', preproc=True, out_mul=0.1),
+    'Proposed': odict(optim_module='neural_manual_obsrv2', preproc=True, out_mul=0.1),
+    # 'Proposed': odict(optim_module='neural_bnn_obsrv', preproc=True, out_mul=0.1),
+    # 'Proposed': odict(optim_module='neural_bnn_obsrv3', preproc=True, out_mul=0.1),
 }
 
 ################################################################################
@@ -182,8 +184,8 @@ def _sanity_check():
   for name in CONFIG['test_optimizers']:
     if not (name in CONFIG['normal_optimizers'] or
             name in CONFIG['neural_optimizers']):
-      import pdb; pdb.set_trace()
-      raise Exception(f"Unknown optimizer name: {name}")
+      print(f"Warning: Unknown optimizer name: {name}! "
+            "It will be tested without trained parameters.")
 
 # def _dump_as_json(out_dir):
 #   _sanity_check()

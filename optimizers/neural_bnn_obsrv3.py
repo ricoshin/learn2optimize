@@ -52,7 +52,7 @@ class Optimizer(nn.Module):
     result_dict = ResultDict()
     unroll_losses = 0
     walltime = 0
-    kld_test = torch.tensor(0.)
+    test_kld = torch.tensor(0.)
 
     params = C(model_cls()).params
     self.feature_gen.new()
@@ -81,8 +81,8 @@ class Optimizer(nn.Module):
 
       iter_watch.touch()
       model_train = C(model_cls(params=params.detach()))
-      nll_train = model_train(*data['in_train'].load())
-      nll_train.backward()
+      train_nll = model_train(*data['in_train'].load())
+      train_nll.backward()
 
       g = model_train.params.grad.flat.detach()
       w = model_train.params.flat.detach()
@@ -136,9 +136,9 @@ class Optimizer(nn.Module):
         walltime += iter_watch.touch('interval')
 
       model_test = C(model_cls(params=params))
-      nll_test = utils.isnan(model_test(*data['in_test'].load()))
+      test_nll = utils.isnan(model_test(*data['in_test'].load()))
       kld_teset = kld / data['in_test'].full_size
-      total_test = nll_test +  kld_test
+      total_test = test_nll +  test_kld
 
       if debug_2:
         import pdb; pdb.set_trace()
@@ -164,10 +164,9 @@ class Optimizer(nn.Module):
 
       # result dict
       result = dict(
-        nll_train=nll_train.tolist(),
-        nll_test=nll_test.tolist(),
-        kld_test=kld_test.tolist(),
-        total_test=total_test.tolist(),
+        train_nll=train_nll.tolist(),
+        test_nll=test_nll.tolist(),
+        test_kld=test_kld.tolist(),
         walltime=walltime,
         **sparse_r
         )

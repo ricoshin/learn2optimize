@@ -53,6 +53,9 @@ def train_neural(
   optim_cls = _get_optim_by_name(optim_module)
 
   optimizer = C(optim_cls())
+  if len([p for p in optimizer.parameters()]) == 0:
+    return None  # no need to be trained if there's no parameter
+
   if tf_write and save_dir is not None:
     tf_writer = SummaryWriter(os.path.join(save_dir, name))
     # writer = SummaryWriter(os.path.join(save_dir, name))
@@ -143,7 +146,9 @@ def test_neural(name, save_dir, learned_params, data_cls, model_cls,
     tf_writer = None
 
   optimizer = C(optim_cls())
-  optimizer.params = learned_params
+  if learned_params is not None:
+    optimizer.params = learned_params
+
   meta_optim = None
   unroll = 1
   np.random.seed(0)
