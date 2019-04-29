@@ -14,11 +14,11 @@ class MaskGenerator(object):
     pass
 
   @classmethod
-  def topk(cls, grad, act, topk, mode='ratio'):
+  def topk(cls, grad, set_size, topk, mode='ratio'):
     # NOTE: act is used to match the size (fix later)
     # dirty work...
     assert mode in ['ratio', 'number']
-    set_size = act.tsize(1)
+    # set_size = act.tsize(1)
     if mode == 'ratio':
       topk_n = cls.compute_topk_n_with_ratio(topk, set_size)
     else:
@@ -38,10 +38,10 @@ class MaskGenerator(object):
     return mask
 
   @classmethod
-  def randk(cls, grad, act, topk, mode='ratio'):
+  def randk(cls, set_size, topk, mode='ratio', *args, **kwargs):
     # NOTE: act is used to match the size (fix later)
     assert mode in ['ratio', 'number']
-    set_size = act.tsize(1)
+    # set_size = act.tsize(1)
     if mode == 'ratio':
       topk_n = cls.compute_topk_n_with_ratio(topk, set_size)
     else:
@@ -51,18 +51,24 @@ class MaskGenerator(object):
     sizes = {k: rand_id(k, v) for k, v in sizes.items()}
     ids = {k: torch.tensor(v).cuda().view(1, -1).long() for k, v in sizes.items()}
     # import pdb; pdb.set_trace()
-    abs_sum = grad.abs().sum(0, keepdim=True) # fix later!
+    # abs_sum = grad.abs().sum(0, keepdim=True) # fix later!
     mask = ParamsFlattener(
       {k: C(torch.zeros(1, v)) for k, v in set_size.items()})
     mask = mask.scatter_float_(1, ids, 1)
     return mask
 
   def compute_topk_n_with_ratio(r, set_size):
-    return {k: int(v*r) for k, v in set_size.items()}
+    if not isinstance(r, dict):
+      r = {k: r for k in set_size.keys()}
+    assert isinstance(r, dict)
+    return {k: int(v*r[k]) for k, v in set_size.items()}
 
   def compute_topk_n_with_number(n, set_size, exclude_last=False):
     topk_n = {}
+    if not isinstance(n, dict):
+      n = {k: n for k in set_size.keys()}
+    assert isinstance(n, dict)
     for i, (name, size) in enumerate(set_size.items()):
-      max_n = (exclude_last and i == len(sizes) - 1) or n > size
-      topk_n[name] = size if max_n else n
+      max_n = (exclude_last and i == len(sizes) - 1) or n[name] > size
+      topk_n[name] = size if max_n else n[name]
     return topk_n

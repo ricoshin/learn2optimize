@@ -8,7 +8,7 @@ from models.model_helpers import ParamsIndexTracker
 # from nn.maskgen_rnn import MaskGenerator
 from nn.maskgen_topk import MaskGenerator
 from nn.rnn_base import RNNBase
-from optimize import log_pbar
+from optimize import log_pbar, log_tf_event
 from optimizers.optim_helpers import (BatchManagerArgument, DefaultIndexer,
                                       OptimizerBatchManager, OptimizerParams,
                                       OptimizerStates, StatesSlicingWrapper)
@@ -94,7 +94,7 @@ class Optimizer(nn.Module):
       best_loss_sparse = 999999
       for i in range(n_sample):
         mask_gen = MaskGenerator.topk if topk else MaskGenerator.randk
-        mask = mask_gen(grad=grad, act=act, topk=self.topk_ratio)
+        mask = mask_gen(grad=grad, set_size=set_size, topk=self.topk_ratio)
 
         if recompute_grad:
           # recompute gradients again using prunned network

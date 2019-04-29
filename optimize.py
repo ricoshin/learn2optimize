@@ -36,10 +36,12 @@ def log_pbar(result_dict, pbar, keys=None):
 
 
 def log_tf_event(result_dict, writer, step, tag):
-  if writer:
-    for i, (k, v) in enumerate(result_dict.items()):
-      writer.add_scalar(f'{tag}/{k}', v, step)
-
+  try:
+    if writer:
+      for i, (k, v) in enumerate(result_dict.items()):
+        writer.add_scalar(f'{tag}/{k}', v, step)
+  except:
+    import pdb; pdb.set_trace()
 
 def train_neural(
   name, save_dir, data_cls, model_cls, optim_module, n_epoch=20, n_train=20,
