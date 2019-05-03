@@ -462,6 +462,7 @@ class StopWatch(object):
     return self
 
   def stop(self, mode=None, verbose=False):
+    assert mode in ['cumulative', 'interval']
     if self.initial is None:
       raise Exception(f'start StopWatch[{self.name}] first!')
 

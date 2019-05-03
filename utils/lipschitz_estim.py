@@ -12,26 +12,50 @@ C = utils.getCudaManager('default')
 #   assert all([isinstance(in, ParamsFlattener) for in in [params, mask]])
 #
 
-def inversed_masked_params(params, mask, step, step_size, r, thres=1e-8):
-  inv_mask = {k: 1 - m for k, m in (mask > thres).unflat.items()}
+# def eval_step_direction(model_clas, data, params, n_grid=200, std=1e-4):
+
+
+
+
+def eval_gauss_var(model_cls, data, params, n_sample=200, std=1e-4):
+  assert isinstance(params, ParamsFlattener)
+  params = params.detach()
+  losses = []
+  for _ in range(n_sample):
+    p = {}
+    for k, v in params.unflat.items():
+      p[k] = v + C(torch.zeros(v.size()).normal_(0, std))
+    params_perturbed = ParamsFlattener(p)
+    model = C(model_cls(params=params_perturbed))
+    losses.append(model(*data['in_train'].load()))
+  return torch.stack(losses).var()
+
+def inversed_masked_params(params, mask, step, step_size, r, thres=0.5):
+  inv_mask = {k: (m < thres) for k, m in mask.unflat.items()}
+  # import pdb; pdb.set_trace()
   num_ones = {k: v.sum() for k, v in inv_mask.items()}
   for k, v in inv_mask.items():
     diff = num_ones[k] - step_size[k] * r[f"sparse_{k.split('_')[1]}"]
-    if diff > 0:
+    if diff >= 0:
       m = inv_mask[k]
-      nonzero_ids = m.nonzero()
-      drop_ids = random.sample(range(nonzero_ids.size(0)), diff.tolist())
+      nonzero_ids = m.nonzero().squeeze().tolist()
+      drop_ids = random.sample(nonzero_ids, diff.tolist())
       m[drop_ids] = torch.tensor(0)
+    else:
+      m = inv_mask[k]
+      zero_ids = (m == 0).nonzero().squeeze().tolist()
+      drop_ids = random.sample(zero_ids, -diff.tolist())
+      m[drop_ids] = torch.tensor(1)
     inv_mask[k] = inv_mask[k].float()
   inv_mask = ParamsFlattener(inv_mask)
   mask_layout = inv_mask.expand_as(params)
   step_sparse = step * mask_layout
   params_sparse = params + step_sparse
-  params_pruned = params_sparse.prune(inv_mask > thres)
-  return params_pruned
+  params_pruned = params_sparse.prune(inv_mask)
+  return params_pruned, params_sparse
 
 
-def random_masked_params(params, step, set_size, r, thres=1e-8):
+def random_masked_params(params, step, set_size, r, thres=0.5):
   assert isinstance(params, ParamsFlattener)
   # assert all([isinstance(arg, ParamsFlattener) for arg in (params, mask)])
   params = params.detach()
@@ -42,7 +66,7 @@ def random_masked_params(params, step, set_size, r, thres=1e-8):
   step_sparse = step * mask_layout
   params_sparse = params + step_sparse
   params_pruned = params_sparse.prune(mask_rand > thres)
-  return params_pruned
+  return params_pruned, params_sparse
 
 
 def eval_lipschitz(params, i):
@@ -57,7 +81,7 @@ def eval_lipschitz(params, i):
 
 
 def generic_power_method(affine_fun, input_size, eps=1e-8,
-                         max_iter=500, use_cuda=False):
+                         max_iter=1000, use_cuda=False):
   """ Return the highest singular value of the linear part of
   `affine_fun` and it's associated left / right singular vectors.
 
@@ -113,6 +137,7 @@ def generic_power_method(affine_fun, input_size, eps=1e-8,
 
   stop_criterion = False
   it = 0
+
   while not stop_criterion:
     previous = v
     v = _norm_gradient_sq(linear_fun, v)  # M'Mv
