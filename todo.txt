@@ -1,0 +1,19 @@
+To do:
+
+- consider data & model model parrallelism
+
+- make the computation practically fast
+  (parrallelize operations as much as they fit to a single GPU cycle)
+
+- make the mask generator code neater
+
+- test relative importance part
+
+- verify step generator output (spitting out constants?)
+
+
+Done:
+
+2019-05-04
+- event drop in custom wallclock time
+- csv file format saving

@@ -1,8 +1,7 @@
-import signal
 import logging
 import os
+import signal
 import time
-from enum import Enum, unique
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -11,6 +10,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import torch
+from tensorboardX import SummaryWriter
 
 _tensor_managers = {}
 _cuda_managers = {}
@@ -52,7 +52,8 @@ class Debugger(object):
   def debug(self):
     if self.signal_on:
       print(f"Signal {self.name}: Enter 'n' to go to the breakpoint!")
-      import pdb; pdb.set_trace()
+      import pdb
+      pdb.set_trace()
 
 
 def getCudaManager(name):
@@ -64,7 +65,8 @@ def getCudaManager(name):
 def isnan(tensor):
   assert isinstance(tensor, torch.Tensor)
   if torch.isnan(tensor):
-    import pdb; pdb.set_trace()
+    import pdb
+    pdb.set_trace()
   return tensor
 
 
@@ -74,13 +76,15 @@ def soft_detach(object):
     tensor.retain_grad()
     return tensor
   elif hasattr(object, 'detach'):
-    import pdb; pdb.set_trace()
+    import pdb
+    pdb.set_trace()
     return object.detach()
   else:
-    import pdb; pdb.set_trace()
+    import pdb
+    pdb.set_trace()
     raise TypeError(f"Unexpected input datatype {type(object)} for "
-      "CUDAManger.detach(). Expected torch.Tensor or incorporate attribute "
-      "detach() in itself.")
+                    "CUDAManger.detach(). Expected torch.Tensor or incorporate attribute "
+                    "detach() in itself.")
 
 
 class CUDAManager(object):
@@ -92,8 +96,6 @@ class CUDAManager(object):
     self.cuda = cuda
     print(f"Global cuda manager '{self.name}' is set to {self.cuda}")
     return self
-
-
 
   def __call__(self, obj):
     if self.cuda is None:
@@ -196,6 +198,18 @@ def prepare_dir(problem, result_dir, save_dir, post_digits=3):
   return _make_unique_dir(os.path.join(result_dir, save_dir))
 
 
+class TFWriter(dict):
+  def __init__(self, *args):
+    assert all([isinstance(arg, str) for arg in args])
+    self.top_dir = os.path.join(*args)
+    super().__init__(main=SummaryWriter(self.top_dir))
+
+  def new_subdirs(self, *args):
+    assert all([isinstance(arg, str) for arg in args])
+    for arg in args:
+      self[arg] = SummaryWriter(os.path.join(self.top_dir, arg))
+
+
 class Plotter(object):
   def __init__(self, title, results, out_dir):
     assert isinstance(results, dict)
@@ -215,9 +229,10 @@ class Plotter(object):
         if name not in visible_names:
           continue
       data_frame = data_frame.append(
-        result.data_frame(name, dimnames), sort=True)
+          result.data_frame(name, dimnames), sort=True)
 
-    import pdb; pdb.set_trace()
+    import pdb
+    pdb.set_trace()
 
     sns.set(color_codes=True)
     sns.set_style('white')
@@ -231,16 +246,19 @@ class Plotter(object):
     #   data_frame['model_loss'] = data_frame['model_loss'].fillna(data_frame['loss'])
 
     if y == 'grad_value':
-      import pdb; pdb.set_trace()
+      import pdb
+      pdb.set_trace()
       data_frame = data_frame[data_frame['track_num'] == 0]
       id_vars = ['optimizer', 'step_num', 'track_num']
-      vars =  ['grad_real', 'grad_pred']
+      vars = ['grad_real', 'grad_pred']
       data_frame = data_frame[id_vars + vars].melt(
-        id_vars=id_vars, var_name='grad_type', value_name='grad_value')
-      import pdb; pdb.set_trace()
+          id_vars=id_vars, var_name='grad_type', value_name='grad_value')
+      import pdb
+      pdb.set_trace()
 
     if y in ['grad', 'mu', 'sigma']:
-      import pdb; pdb.set_trace()
+      import pdb
+      pdb.set_trace()
 
     if y == 'grad_value':
       hue_order = vars
@@ -254,7 +272,7 @@ class Plotter(object):
                       hue=hue, hue_order=hue_order)
     ax.lines[-1].set_linestyle('-')
     # if hue is not None:
-      # ax.legend()
+    # ax.legend()
     title = f"{self.title}_{y}_wrt_{x}"
     if logscale:
       plt.yscale('log')
@@ -294,7 +312,7 @@ def plot_(data, title, names, x='step_num'):
   # if os.environ.get('DISPLAY', '') == '':
   #   print('No display found. Just try to save figure using Agg backend!')
   #   matplotlib.use('Agg')
-  #if x == 'wallclock_time':
+  # if x == 'wallclock_time':
   grouped = data_frame.groupby(['optimizer', 'step_num'])
   data_frame = grouped.mean().reset_index()
 
@@ -321,7 +339,7 @@ def plot_update(tracks, title, names, x='step_num'):
   sns.set(color_codes=True)
   sns.set_style('white')
 
-  #for nerzip(tracks[0], tracks[1])
+  # for nerzip(tracks[0], tracks[1])
   data_new = []
   # [num_neural_opt, n_test, optim_it, n_tracks]
   for n_opt, v_opt in enumerate(tracks):
@@ -346,7 +364,7 @@ def plot_update(tracks, title, names, x='step_num'):
   # if os.environ.get('DISPLAY', '') == '':
   #   print('No display found. Just try to save figure using Agg backend!')
   #   matplotlib.use('Agg')
-  #if x == 'wallclock_time':
+  # if x == 'wallclock_time':
   #grouped = data_frame.groupby(['optimizer', 'step_num'])
   #data_frame = grouped.mean().reset_index()
 
@@ -355,7 +373,7 @@ def plot_update(tracks, title, names, x='step_num'):
                     hue='optimizer', hue_order=names)
   ax.lines[-1].set_linestyle('-')
   ax.legend()
-  #plt.yscale('log')
+  # plt.yscale('log')
   plt.xlabel(x)
   plt.ylabel('update')
   plt.title(title)
@@ -368,7 +386,6 @@ def plot_update(tracks, title, names, x='step_num'):
   print('Plot saved!')
 
 
-
 def plot_grid(update, grid, title, names, x='step_num'):
   # plotting
   sns.set(color_codes=True)
@@ -377,13 +394,14 @@ def plot_grid(update, grid, title, names, x='step_num'):
   #update: [n_test, optim_it, n_track]
   #grid: [n_test, optim_it, n_track]
 
-  #for nerzip(tracks[0], tracks[1])
+  # for nerzip(tracks[0], tracks[1])
   data_new = []
   # [num_neural_opt, n_test, optim_it, n_tracks]
   len_n_test = len(update)
   len_optim_it = len(update[0])
   len_n_track = len(update[0][0])
-  mag = lambda x: np.sqrt(np.dot(x, x))
+
+  def mag(x): return np.sqrt(np.dot(x, x))
   for n_test in range(len_n_test):
     for n_optim in range(len_optim_it):
       for n_track in range(len_n_track):
@@ -391,7 +409,7 @@ def plot_grid(update, grid, title, names, x='step_num'):
         grid_ = mag(grid[n_test][n_optim][n_track])
         data_new.append([n_test, n_optim, n_track, 'update', update_])
         data_new.append([n_test, n_optim, n_track, 'grid', grid_])
-        data_new.append([n_test, n_optim, n_track, 'ratio', update_/grid_])
+        data_new.append([n_test, n_optim, n_track, 'ratio', update_ / grid_])
 
   data_new = np.array(data_new)
   data_frame = pd.DataFrame({
@@ -404,18 +422,19 @@ def plot_grid(update, grid, title, names, x='step_num'):
 
   palette = sns.color_palette(n_colors=3)
   #import pdb; pdb.set_trace()
-  df = data_frame.loc[data_frame['update/grid'].isin(['update','grid'])]
+  df = data_frame.loc[data_frame['update/grid'].isin(['update', 'grid'])]
   ax = sns.lineplot(data=df, x=x, y='magnitude', legend=False,
                     hue='update/grid', hue_order=['update', 'grid'])
 
-  #ax.lines[-1].set_linestyle('-')
+  # ax.lines[-1].set_linestyle('-')
   ax2 = ax.twinx()
-  import pdb; pdb.set_trace()
+  import pdb
+  pdb.set_trace()
   df = data_frame.loc[data_frame['update/grid'].isin(['ratio'])]
   sns.lineplot(data=df, ax=ax2, color='r', legend=False,
                x=x, y='magnitude')
   ax2.legend()
-  #plt.yscale('log')
+  # plt.yscale('log')
   plt.xlabel(x)
   plt.ylabel('magnitude')
   plt.title(title)
@@ -426,71 +445,3 @@ def plot_grid(update, grid, title, names, x='step_num'):
   plt.savefig(f'plot_{x}_grid.png')
   print('Plot displayed!')
   print('Plot saved!')
-
-
-@unique
-class WatchMode(Enum):
-  NONE = 0
-  GO_STOP = 1
-  TOUCH = 2
-
-
-class StopWatch(object):
-
-  def __init__(self, name='default'):
-    self.name = name
-    self.initial = None
-    self.cumulative = [0]
-    self.interval = []
-
-  @property
-  def average(self):
-    if len(interval) == 0:
-      return 0
-    return self.interval / len(self.interval)
-
-  def __enter__(self):
-    return self.go()
-
-  def __exit__(self, type, value, trace_back):
-    self.stop()
-
-  def go(self):
-    if self.initial is not None:
-      raise Exception(f'StopWatch[{self.name}] already started!')
-    self.initial = time.time()
-    return self
-
-  def stop(self, mode=None, verbose=False):
-    assert mode in ['cumulative', 'interval']
-    if self.initial is None:
-      raise Exception(f'start StopWatch[{self.name}] first!')
-
-    cumulative = time.time() - self.initial
-    self.cumulative.append(cumulative)
-    self.interval.append(self.cumulative[-1] - self.cumulative[-2])
-
-    if mode == 'cumulative':
-      out = self.cumulative[-1]
-    elif mode == 'interval':
-      out = self.interval[-1]
-    else:
-      out = None
-
-    if verbose:
-      print('\n' + self.format(out, mode) + '\n')
-
-    return out
-
-  def touch(self, mode='cumulative', verbose=False):
-    if self.initial is None:
-      self.go()
-      return 0.0
-    return self.stop(mode, verbose)
-
-
-  def format(self, sec, mode, hms=False):
-    outstr = f'StopWatch[{self.name}/{mode}] {sec}'
-    if hms:
-      outstr += time.strftime("(%Hhrs %Mmins %Ssecs)", time.gmtime(seconds))
-    return outstr

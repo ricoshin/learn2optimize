@@ -89,7 +89,6 @@ class ResultPack(object):
     for k, v in kwargs:
       pd.Series()
 
-
   def _maybe_factorize_list(self, kwargs):
     """split lists (if exists in values) to seperate key-value pairs"""
     for name, value in kwargs.items():
@@ -98,21 +97,17 @@ class ResultPack(object):
         kwargs.update(unique_kwargs)
         del kwargs[name]
 
-
-
-
   def _auto_type_series(self, kwargs):
     dict_ = {}
     get_series = lambda k, v: pd.Series({k: v}, dtype)
     for name, value in kwargs.items():
       if isinstance(value, (int, float, str)):
-
-
         pd.Series(kwargs, dtype=type)
 
 
 class ResultDict(dict):
-  _save_ext = ".pickle"
+  _save_ext = '.pickle'
+
   def __init__(self, *args, **kwargs):
     super().__init__(*args, **kwargs)
 
@@ -144,12 +139,25 @@ class ResultDict(dict):
     return ResultDict({k: np.array(v).mean(*args, **kwargs)\
       for k, v in self.items()})
 
-  def save(self, name, save_dir):
+  def save(self, name, save_dir, tag=''):
     if save_dir is None:
       return self
-    filename = os.path.join(save_dir, name + ResultDict._save_ext)
+    tag = '_' + tag if tag else tag
+    filename = os.path.join(save_dir, name + tag + ResultDict._save_ext)
     with open(filename, 'wb') as f:
       pickle.dump(dict(self), f)
+    print(f'\nSaved test result as: {filename}')
+    return self
+
+  def save_as_csv(self, name, save_dir, tag='', trans_1d=False):
+    if save_dir is None:
+      return self
+    tag = '_' + tag if tag else tag
+    filename = os.path.join(save_dir, name + tag + '.csv')
+    with open(filename, 'wb') as f:
+      for k, v in dict(self).items():
+        v = (v,) if trans_1d else v
+        np.savetxt(f, v, delimiter=',', header=k)
     print(f'\nSaved test result as: {filename}')
     return self
 
@@ -181,32 +189,6 @@ class ResultDict(dict):
   def is_loadable(name, load_dir):
     filepath = os.path.join(load_dir, name + ResultDict._save_ext)
     return True if os.path.exists(filepath) and load_dir else False
-  # def __setitem__(self, key, item):
-  #   self._named_results
-
-  # def data_frame(self):
-    # dict_ = {}
-    # full_shape = self.full_shape
-    # for name, array in self.numpy().items():
-    #   margin = len(full_shape) - len(array.shape)
-    #   assert not margin < 0
-    #   # match the number of dimensions with unsqueezing
-    #   if margin > 0:
-    #     dict_[name] = array.reshape(array.shape + (1,) * margin)
-    #   assert len(full_shape) == len(array.shape)
-    #   # match the sizes of each dimension by expanding
-    #   for i, (full_size, size) in enumerate(zip(full_shape, array.shape)):
-    #     if size == 1:
-    #       # expand that dimension to the full size
-    #       dict_[name] = dict_[name].repeat(repeats=full_size, axis=i)
-    #     assert full_size == size  # all the arrays must have the same shape
-    #   dict_[name] = dict_[name].reshape(-1)  # flatten array
-    #
-    # series = {}
-    # dtypes = [type_.__class__.__name__ for type_ in self.dtype.values()]
-    # for (name, array), dtype in zip(dict_.items(), dtypes):
-    #   series.update({name: pd.Series(array, dtype=dtype)})
-    # return pd.DataFrame(series)
 
   def data_frame(self, opt_name, dim_names):
     dict_ = self.numpy()

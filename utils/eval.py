@@ -14,9 +14,6 @@ C = utils.getCudaManager('default')
 
 # def eval_step_direction(model_clas, data, params, n_grid=200, std=1e-4):
 
-
-
-
 def eval_gauss_var(model_cls, data, params, n_sample=200, std=1e-4):
   assert isinstance(params, ParamsFlattener)
   params = params.detach()
