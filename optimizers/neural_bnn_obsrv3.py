@@ -111,7 +111,7 @@ class Optimizer(nn.Module):
       if not os.path.exists(result_dir):
           os.makedirs(result_dir)
       sample_num = 100
-      if mode == 'test' and plotting_mask:
+      if mode == 'test' and plotting_mask and (iteration % 10 == 0):
         for i in range(sample_num):
           mask = self.mask_gen.sample_mask()
           mask = ParamsFlattener(mask)
@@ -123,14 +123,8 @@ class Optimizer(nn.Module):
           else:
             mask_cat = torch.cat((mask_cat, mask_flat.unsqueeze(dim=0)), dim=0)
             mask_sum += mask
-        mask_mean, mask_var = mask_cat.mean(dim=0), mask_cat.var(dim=0)
-        hist_mean, bins_mean  = np.histogram(np.array(mask_mean.detach().cpu()))
-        hist_var, bins_var = np.histogram(np.array(mask_var.detach().cpu()))
-        # drop = 
-        # retain = 
-        # certain = 
-        # uncertain = 
-        import pdb; pdb.set_trace()
+        mask_mean, mask_var = mask_cat.mean(dim=0).squeeze(), mask_cat.var(dim=0).squeeze()
+        
         mask_sum /= sample_num
         mask = mask>0.5
 
@@ -157,10 +151,41 @@ class Optimizer(nn.Module):
         layer_0_abs = ParamsFlattener({'layer_0': layer_0})
         layer_1_abs = ParamsFlattener({'layer_1': layer_1})
 
+        hist_mean, bins_mean  = np.histogram(tensor2numpy(mask_mean), bins=20)
+        hist_var, bins_var = np.histogram(tensor2numpy(mask_var), bins=20)
+
+        sorted_layer_0 = np.sort(tensor2numpy(mask_mean[0:layer_size['layer_0']]))[::-1]
+        
+        mask_thr_layer_0 = sorted_layer_0[int(sparse_r['sparse_0'] * layer_size['layer_0'])]
+        sorted_layer_1 = np.sort(tensor2numpy(mask_mean[layer_size['layer_0']: layer_size['layer_0']+layer_size['layer_1']]))[::-1]
+        mask_thr_layer_1 = sorted_layer_1[int(sparse_r['sparse_1'] * layer_size['layer_1'])]
+        drop = tensor2numpy(mask_mean) < tensor2numpy(mask_mean.median())
+        sparse_r_drop = np.concatenate(((tensor2numpy(mask_mean) < mask_thr_layer_0)[0:layer_size['layer_0']], (tensor2numpy(mask_mean) < mask_thr_layer_1)[layer_size['layer_0']: layer_size['layer_0']+layer_size['layer_1']]), axis=0)
+        for index, drop in enumerate([drop, sparse_r_drop]):
+          drop = np.array(drop, dtype=int)
+          retain = 1 - drop
+          certain = tensor2numpy(mask_var > mask_var.median())
+          uncertain = 1 - certain
+          certain_drop = certain * drop
+          certain_retain = certain * retain
+          uncertain_drop = uncertain * drop
+          uncertain_retain = uncertain * retain
+          if index == 0:
+            print("\niteration {} (median) certain drop : {} certain retain : {} uncertain drop : {} uncertain_retain : {}\n".format(iteration, certain_drop.sum(), certain_retain.sum(), uncertain_drop.sum(), uncertain_retain.sum()))
+          else:
+            print("\niteration {} (sparse) certain drop : {} certain retain : {} uncertain drop : {} uncertain_retain : {}\n".format(iteration, certain_drop.sum(), certain_retain.sum(), uncertain_drop.sum(), uncertain_retain.sum()))
+        #import pdb; pdb.set_trace()
+
         mask_result = self.plot_masks(mask, layer_0_topk, layer_1_topk, mask_sum, layer_0_prefer_topk, layer_1_prefer_topk, 
                         layer_0, layer_1, result_dir, iteration, sparse_r, mask_mean, mask_var)
+        mask_result2 =  dict(
+                    certain_drop,
+                    certain_retain,
+                    uncertain_drop,
+                    uncertain_retain
+                  )
         mask_dict.append(mask_result)
-        
+        mask_dict.append(mask_result2)
       ##############################################################
       #import pdb; pdb.set_trace()
       for i in range(n_samples):
@@ -335,21 +360,21 @@ class Optimizer(nn.Module):
     return result_dict
   
   def plot_masks(self, mask, layer_0_topk, layer_1_topk, mask_sum, layer_0_prefer_topk, layer_1_prefer_topk, layer_0, layer_1, result_dir, iteration, sparse_r, mask_mean, mask_var):
-    plot_mask(np.array(mask._unflat['layer_0'].detach().cpu()), os.path.join(result_dir,'iter{}_mask_layer0.png'.format(iteration)), 'sparse ratio - layer 0 = {}'.format(sparse_r['sparse_0']))
-    plot_mask(np.array(mask._unflat['layer_1'].detach().cpu()), os.path.join(result_dir,'iter{}_mask_layer1.png'.format(iteration)), 'sparse ratio - layer 1 = {}'.format(sparse_r['sparse_1']))
+    plot_mask(tensor2numpy(mask._unflat['layer_0']), os.path.join(result_dir,'iter{}_mask_layer0.png'.format(iteration)), 'sparse ratio - layer 0 = {}'.format(sparse_r['sparse_0']))
+    plot_mask(tensor2numpy(mask._unflat['layer_1']), os.path.join(result_dir,'iter{}_mask_layer1.png'.format(iteration)), 'sparse ratio - layer 1 = {}'.format(sparse_r['sparse_1']))
 
     #import pdb; pdb.set_trace()
-    plot_mask(np.array(layer_0_topk.detach().cpu()), os.path.join(result_dir,'iter{}_topk_layer0.png'.format(iteration)), 'topk - layer 0 ({})'.format(sparse_r['sparse_0']))
-    plot_mask(np.array(layer_1_topk.detach().cpu()), os.path.join(result_dir,'iter{}_topk_layer1.png'.format(iteration)), 'topk - layer 1 ({})'.format(sparse_r['sparse_1']))
+    plot_mask(tensor2numpy(layer_0_topk), os.path.join(result_dir,'iter{}_topk_layer0.png'.format(iteration)), 'topk - layer 0 ({})'.format(sparse_r['sparse_0']))
+    plot_mask(tensor2numpy(layer_1_topk), os.path.join(result_dir,'iter{}_topk_layer1.png'.format(iteration)), 'topk - layer 1 ({})'.format(sparse_r['sparse_1']))
 
-    plot_mask(np.array(layer_0_prefer_topk.detach().cpu()), os.path.join(result_dir,'iter{}_prefer_topk_layer0.png'.format(iteration)), 'prefer topk - layer 0 ({})'.format(sparse_r['sparse_0']))
-    plot_mask(np.array(layer_1_prefer_topk.detach().cpu()), os.path.join(result_dir,'iter{}_prefer_topk_layer1.png'.format(iteration)), 'prefer topk - layer 1 ({})'.format(sparse_r['sparse_1']))
+    plot_mask(tensor2numpy(layer_0_prefer_topk), os.path.join(result_dir,'iter{}_prefer_topk_layer0.png'.format(iteration)), 'prefer topk - layer 0 ({})'.format(sparse_r['sparse_0']))
+    plot_mask(tensor2numpy(layer_1_prefer_topk), os.path.join(result_dir,'iter{}_prefer_topk_layer1.png'.format(iteration)), 'prefer topk - layer 1 ({})'.format(sparse_r['sparse_1']))
 
-    plot_mask(np.array(mask_sum._unflat['layer_0'].detach().cpu()), os.path.join(result_dir, 'iter{}_mask_sum_layer0.png'.format(iteration)), 'prefer - layer 0 ({})'.format(sparse_r['sparse_0']))
-    plot_mask(np.array(mask_sum._unflat['layer_1'].detach().cpu()), os.path.join(result_dir, 'iter{}_mask_sum_layer1.png'.format(iteration)), 'prefer - layer 1 ({})'.format(sparse_r['sparse_1']))
+    plot_mask(tensor2numpy(mask_sum._unflat['layer_0']), os.path.join(result_dir, 'iter{}_mask_sum_layer0.png'.format(iteration)), 'prefer - layer 0 ({})'.format(sparse_r['sparse_0']))
+    plot_mask(tensor2numpy(mask_sum._unflat['layer_1']), os.path.join(result_dir, 'iter{}_mask_sum_layer1.png'.format(iteration)), 'prefer - layer 1 ({})'.format(sparse_r['sparse_1']))
 
-    plot_mask(np.array(layer_0.detach().cpu()), os.path.join(result_dir,'iter{}_grad_layer0.png'.format(iteration)), 'grad - layer 0 ({})'.format(sparse_r['sparse_0']))
-    plot_mask(np.array(layer_1.detach().cpu()), os.path.join(result_dir,'iter{}_grad_layer1.png'.format(iteration)), 'grad - layer 1 ({})'.format(sparse_r['sparse_1']))
+    plot_mask(tensor2numpy(layer_0), os.path.join(result_dir,'iter{}_grad_layer0.png'.format(iteration)), 'grad - layer 0 ({})'.format(sparse_r['sparse_0']))
+    plot_mask(tensor2numpy(layer_1), os.path.join(result_dir,'iter{}_grad_layer1.png'.format(iteration)), 'grad - layer 1 ({})'.format(sparse_r['sparse_1']))
 
     #import pdb; pdb.set_trace()
     overlap_mask_0 = layer_0_topk * mask._unflat['layer_0']
@@ -358,9 +383,9 @@ class Optimizer(nn.Module):
     overlap_mask_ratio_0 = overlap_mask_0.sum().float()/(len(overlap_mask_0) * sparse_r['sparse_0'])
     overlap_mask_ratio_1 = overlap_mask_1.sum().float()/(len(overlap_mask_1) * sparse_r['sparse_1'])
 
-    plot_mask(np.array(overlap_mask_0.detach().cpu()), os.path.join(result_dir,'iter{}_overlap_mask_layer0.png'.format(iteration)), 
+    plot_mask(tensor2numpy(overlap_mask_0), os.path.join(result_dir,'iter{}_overlap_mask_layer0.png'.format(iteration)), 
                 '{}/{}(overlap/topk) overlap ratio({:.2f})'.format(overlap_mask_0.sum(),int(sparse_r['sparse_0'] * len(overlap_mask_0)), overlap_mask_ratio_0))
-    plot_mask(np.array(overlap_mask_1.detach().cpu()), os.path.join(result_dir,'iter{}_overlap_mask_layer1.png'.format(iteration)), 
+    plot_mask(tensor2numpy(overlap_mask_1), os.path.join(result_dir,'iter{}_overlap_mask_layer1.png'.format(iteration)), 
                 '{}/{}(overlap/topk) overlap ratio({:.2f})'.format(overlap_mask_1.sum(),int(sparse_r['sparse_1'] * len(overlap_mask_1)), overlap_mask_ratio_1))
 
     #import pdb; pdb.set_trace()
@@ -370,13 +395,13 @@ class Optimizer(nn.Module):
     overlap_prefer_ratio_0 = overlap_prefer_0.sum().float()/(len(overlap_prefer_0) * sparse_r['sparse_0'])
     overlap_prefer_ratio_1 = overlap_prefer_1.sum().float()/(len(overlap_prefer_1) * sparse_r['sparse_1']) 
     #import pdb; pdb.set_trace()
-    plot_mask(np.array(overlap_prefer_0.detach().cpu()), os.path.join(result_dir,'iter{}_overlap_prefer_layer0.png'.format(iteration)), 
+    plot_mask(tensor2numpy(overlap_prefer_0), os.path.join(result_dir,'iter{}_overlap_prefer_layer0.png'.format(iteration)), 
                 '{}/{}(overlap/topk) overlap ratio({:.2f})'.format(overlap_prefer_0.sum(),int(sparse_r['sparse_0'] * len(overlap_prefer_0)), overlap_prefer_ratio_0))
-    plot_mask(np.array(overlap_prefer_1.detach().cpu()), os.path.join(result_dir,'iter{}_overlap_prefer_layer1.png'.format(iteration)), 
+    plot_mask(tensor2numpy(overlap_prefer_1), os.path.join(result_dir,'iter{}_overlap_prefer_layer1.png'.format(iteration)), 
                 '{}/{}(overlap/topk) overlap ratio({:.2f})'.format(overlap_prefer_1.sum(),int(sparse_r['sparse_1'] * len(overlap_prefer_1)), overlap_prefer_ratio_1))
     
-    plot_dist(np.array(mask_var.detach().cpu()), os.path.join(result_dir, 'iter{}_dist_var.png'.format(iteration)), 'distribution of mask uncertainty')
-    plot_dist(np.array(mask_mean.detach().cpu()), os.path.join(result_dir, 'iter{}_dist_mean.png'.format(iteration)),'distribution of mask retain prob')
+    plot_dist(tensor2numpy(mask_var), os.path.join(result_dir, 'iter{}_dist_var.png'.format(iteration)), 'distribution of mask uncertainty')
+    plot_dist(tensor2numpy(mask_mean), os.path.join(result_dir, 'iter{}_dist_mean.png'.format(iteration)),'distribution of mask retain prob')
     
 
     mask_result = dict(
@@ -522,6 +547,9 @@ def plot_dist(x, savefig='mask.png', title=None):
   sns.distplot(x)
   plt.title(title)
   plt.savefig(savefig)
+
+def tensor2numpy(x):
+  return np.array(x.detach().cpu())
 
 def filter_norm(direction):
   return direction
