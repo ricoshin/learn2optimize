@@ -21,6 +21,7 @@ from optimize import log_pbar
 #sys.path.append('/home/user/Personal/Baek/CS671/loss-landscape')
 #from plot_surface import *
 import matplotlib; matplotlib.use('agg')
+import matplotlib.pyplot as plt
 from nn.maskgen_topk import MaskGenerator as MaskGenerator2
 import os
 import seaborn as sns
@@ -71,6 +72,9 @@ class Optimizer(nn.Module):
     layer_size = {'layer_0': 500, 'layer_1': 10}  # NOTE: make it smarter
     ##############################################################
     mask_dict = ResultDict()
+    plotting_mask = True
+    topk = True
+    draw_loss = False
     ##############################################################
     for iteration in iter_pbar:
       if debug_sigint.signal_on:
@@ -89,11 +93,6 @@ class Optimizer(nn.Module):
       best_params = None
       n_samples = 10
 
-      ##############################################################
-      plotting_mask = False
-      topk = True
-      draw_loss = True
-      ##############################################################
       iter_watch.touch()
       model_train = C(model_cls(params=params.detach()))
       input_data = data['in_train'].load()
@@ -125,6 +124,11 @@ class Optimizer(nn.Module):
             mask_cat = torch.cat((mask_cat, mask_flat.unsqueeze(dim=0)), dim=0)
             mask_sum += mask
         mask_mean, mask_var = mask_cat.mean(dim=0), mask_cat.var(dim=0)
+        hist_mean, bins_mean  = np.histogram(np.array(mask_mean.detach().cpu()))
+        hist_var, bins_var = np.histogram(np.array(mask_var.detach().cpu()))
+        drop = 
+        retain = 
+        import pdb; pdb.set_trace()
         mask_sum /= sample_num
         mask = mask>0.5
 
@@ -139,7 +143,7 @@ class Optimizer(nn.Module):
         layer_0_topk = layer_0_topk>0.5
         layer_1_topk = mask_gen(grad=grad, act=act, topk=sparse_r['sparse_1'])._unflat['layer_1'].view(-1)
         layer_1_topk = layer_1_topk>0.5
-        #import pdb; pdb.set_trace()
+
         layer_0_prefer_topk = mask_gen(grad=mask_sum.expand_as(params), act=act, topk=sparse_r['sparse_0'])._unflat['layer_0'].view(-1)
         layer_1_prefer_topk = mask_gen(grad=mask_sum.expand_as(params), act=act, topk=sparse_r['sparse_1'])._unflat['layer_1'].view(-1)
         layer_0_prefer_topk = layer_0_prefer_topk>0.5
@@ -150,8 +154,9 @@ class Optimizer(nn.Module):
         grad.unflat['bias_1'].unsqueeze(0)], dim=0).abs().sum(0)
         layer_0_abs = ParamsFlattener({'layer_0': layer_0})
         layer_1_abs = ParamsFlattener({'layer_1': layer_1})
-        #import pdb; pdb.set_trace()
-        mask_result = self.plot_masks(mask, layer_0_topk, layer_1_topk, mask_sum, layer_0_prefer_topk, layer_1_prefer_topk, layer_0, layer_1, result_dir, iteration, sparse_r)
+
+        mask_result = self.plot_masks(mask, layer_0_topk, layer_1_topk, mask_sum, layer_0_prefer_topk, layer_1_prefer_topk, 
+                        layer_0, layer_1, result_dir, iteration, sparse_r, mask_mean, mask_var)
         mask_dict.append(mask_result)
         
       ##############################################################
@@ -264,7 +269,7 @@ class Optimizer(nn.Module):
         L2_Y = (step_Y * step_Y).sum()
 
         layer_settings = [['mat_0', 'bias_0', 'mat_1', 'bias_1'], ['mat_0', 'bias_0'], ['mat_1', 'bias_1']]
-        result_dirs = ['result/savefig_all', 'result/savefig_layer0', 'result/savefig_layer1']
+        result_dirs = ['result/savefig_all_scale_s', 'result/savefig_layer0_scale_s', 'result/savefig_layer1_scale_s']
         for layer_set, result_dir in zip(layer_settings, result_dirs):
           if not os.path.exists(result_dir):
             os.makedirs(result_dir)
@@ -274,16 +279,20 @@ class Optimizer(nn.Module):
           #step_Y2_ = params.new_from_flat(0.1 * step_Y)
           abs_X = step_X_.abs().sum()
           abs_Y = step_Y_.abs().sum()
+          L2_X = (step_X_ * step_X_).sum()
+          L2_Y = (step_Y_ * step_Y_).sum()
+          import pdb; pdb.set_trace()
           scale_X, scale_Y = 0, 0
           for layer in layer_set:
             scale_X += abs_X.unflat[layer].item()
             scale_Y += abs_Y.unflat[layer].item()
           scale_g = scale_X/scale_Y
+          scale_s = scale_Y/scale_X
           #import pdb; pdb.set_trace()
           #step_Y_ = step_Y_ * (step_X_.abs().sum() /  step_Y_.abs().sum())
           
-          Z_X = get_1D_Loss(X, step_X_, 1.0, step_X.size(), layer_set, data['in_train'], model_cls, params)
-          Z_Y = get_1D_Loss(Y, step_Y_, scale_g, step_Y.size(), layer_set,data['in_train'], model_cls, params)
+          Z_X = get_1D_Loss(X, step_X_, scale_s, step_X.size(), layer_set, data['in_train'], model_cls, params)
+          Z_Y = get_1D_Loss(Y, step_Y_, 1.0, step_Y.size(), layer_set,data['in_train'], model_cls, params)
           #Z_X2 = get_1D_Loss(X, step_X2_, scale, step_X.size(), layer_set, data['in_train'], model_cls, params)
           #Z_Y2 = get_1D_Loss(Y, step_Y2_, scale,step_Y.size(), layer_set,data['in_train'], model_cls, params)
           plot_2d(X, Z_X, os.path.join(result_dir, 'iter_{}_STEPxMASK_1dLoss.png'.format(iteration)))
@@ -323,7 +332,7 @@ class Optimizer(nn.Module):
       import pdb; pdb.set_trace()
     return result_dict
   
-  def plot_masks(self, mask, layer_0_topk, layer_1_topk, mask_mean, layer_0_prefer_topk, layer_1_prefer_topk, layer_0, layer_1, result_dir, iteration, sparse_r):
+  def plot_masks(self, mask, layer_0_topk, layer_1_topk, mask_sum, layer_0_prefer_topk, layer_1_prefer_topk, layer_0, layer_1, result_dir, iteration, sparse_r, mask_mean, mask_var):
     plot_mask(np.array(mask._unflat['layer_0'].detach().cpu()), os.path.join(result_dir,'iter{}_mask_layer0.png'.format(iteration)), 'sparse ratio - layer 0 = {}'.format(sparse_r['sparse_0']))
     plot_mask(np.array(mask._unflat['layer_1'].detach().cpu()), os.path.join(result_dir,'iter{}_mask_layer1.png'.format(iteration)), 'sparse ratio - layer 1 = {}'.format(sparse_r['sparse_1']))
 
@@ -334,8 +343,8 @@ class Optimizer(nn.Module):
     plot_mask(np.array(layer_0_prefer_topk.detach().cpu()), os.path.join(result_dir,'iter{}_prefer_topk_layer0.png'.format(iteration)), 'prefer topk - layer 0 ({})'.format(sparse_r['sparse_0']))
     plot_mask(np.array(layer_1_prefer_topk.detach().cpu()), os.path.join(result_dir,'iter{}_prefer_topk_layer1.png'.format(iteration)), 'prefer topk - layer 1 ({})'.format(sparse_r['sparse_1']))
 
-    plot_mask(np.array(mask_mean._unflat['layer_0'].detach().cpu()), os.path.join(result_dir, 'iter{}_mask_mean_layer0.png'.format(iteration)), 'prefer - layer 0 ({})'.format(sparse_r['sparse_0']))
-    plot_mask(np.array(mask_mean._unflat['layer_1'].detach().cpu()), os.path.join(result_dir, 'iter{}_mask_mean_layer1.png'.format(iteration)), 'prefer - layer 1 ({})'.format(sparse_r['sparse_1']))
+    plot_mask(np.array(mask_sum._unflat['layer_0'].detach().cpu()), os.path.join(result_dir, 'iter{}_mask_sum_layer0.png'.format(iteration)), 'prefer - layer 0 ({})'.format(sparse_r['sparse_0']))
+    plot_mask(np.array(mask_sum._unflat['layer_1'].detach().cpu()), os.path.join(result_dir, 'iter{}_mask_sum_layer1.png'.format(iteration)), 'prefer - layer 1 ({})'.format(sparse_r['sparse_1']))
 
     plot_mask(np.array(layer_0.detach().cpu()), os.path.join(result_dir,'iter{}_grad_layer0.png'.format(iteration)), 'grad - layer 0 ({})'.format(sparse_r['sparse_0']))
     plot_mask(np.array(layer_1.detach().cpu()), os.path.join(result_dir,'iter{}_grad_layer1.png'.format(iteration)), 'grad - layer 1 ({})'.format(sparse_r['sparse_1']))
@@ -363,6 +372,11 @@ class Optimizer(nn.Module):
                 '{}/{}(overlap/topk) overlap ratio({:.2f})'.format(overlap_prefer_0.sum(),int(sparse_r['sparse_0'] * len(overlap_prefer_0)), overlap_prefer_ratio_0))
     plot_mask(np.array(overlap_prefer_1.detach().cpu()), os.path.join(result_dir,'iter{}_overlap_prefer_layer1.png'.format(iteration)), 
                 '{}/{}(overlap/topk) overlap ratio({:.2f})'.format(overlap_prefer_1.sum(),int(sparse_r['sparse_1'] * len(overlap_prefer_1)), overlap_prefer_ratio_1))
+    
+    plot_dist(np.array(mask_var.detach().cpu()), os.path.join(result_dir, 'iter{}_dist_var.png'.format(iteration)), 'distribution of mask uncertainty')
+    plot_dist(np.array(mask_mean.detach().cpu()), os.path.join(result_dir, 'iter{}_dist_mean.png'.format(iteration)),'distribution of mask retain prob')
+    
+
     mask_result = dict(
           sparse_0 = sparse_r['sparse_0'],
           sparse_1 = sparse_r['sparse_1'],
@@ -498,5 +512,14 @@ def plot_2d(x, y, savefig='mask.png', title=None):
 
 
   #plt.show()
+
+
+def plot_dist(x, savefig='mask.png', title=None):
+  sns.set()
+  fig = plt.figure()
+  sns.distplot(x)
+  plt.title(title)
+  plt.savefig(savefig)
+
 def filter_norm(direction):
   return direction
