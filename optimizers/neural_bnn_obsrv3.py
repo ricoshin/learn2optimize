@@ -228,7 +228,7 @@ class Optimizer(nn.Module):
         walltime += iter_watch.touch('interval')
       #iter_pbar = tqdm(range(1, 5 + 1), 'Draw_loop')
       ##############################################################
-      if draw_loss and ((iteration-1) % 10 == 0) and (iteration >1):
+      if draw_loss and ((iteration-1) % 20 == 0) and (iteration >1):
         num_loss = 20
         X = np.linspace(-2.0, 0.5, num_loss)
         Y = np.linspace(-2.0, 0.5, num_loss)
@@ -253,9 +253,9 @@ class Optimizer(nn.Module):
         step_X = self.step_gen(feature, v_sqrt, debug=debug_1)
         step_X = params.new_from_flat(step_X[0]) * mask_layout
         step_X = step_X.flat.view(-1)
+        step_Y = model_train.params.grad.flat.view(-1) 
         step_X_ = params.new_from_flat(-1.0 * step_X)
         step_X2_ = params.new_from_flat(-10.0 * step_X)
-        step_Y = model_train.params.grad.flat.view(-1) 
         step_Y_ = params.new_from_flat(1.0 * step_Y)
         step_Y2_ = params.new_from_flat(0.1 * step_Y)
         #import pdb; pdb.set_trace()
@@ -263,42 +263,34 @@ class Optimizer(nn.Module):
         L2_X = (step_X * step_X).sum()
         L2_Y = (step_Y * step_Y).sum()
 
-        
-        Z_X = get_1D_Loss(X, step_X_, step_X.size(), ['mat_0', 'bias_0', 'mat_1', 'bias_1'], data['in_train'], model_cls, params)
-        Z_X2 = get_1D_Loss(X, step_X2_, step_X.size(), ['mat_0', 'bias_0', 'mat_1', 'bias_1'], data['in_train'], model_cls, params)
-        Z_Y = get_1D_Loss(Y, step_Y_, step_Y.size(), ['mat_0', 'bias_0', 'mat_1', 'bias_1'],data['in_train'], model_cls, params)
-        Z_Y2 = get_1D_Loss(Y, step_Y2_, step_Y.size(), ['mat_0', 'bias_0', 'mat_1', 'bias_1'],data['in_train'], model_cls, params)
-        result_dir = 'result/savefig_all'
-        if not os.path.exists(result_dir):
-          os.makedirs(result_dir)
-        plot_2d(X, Z_X, os.path.join(result_dir, 'iter_{}_STEPxMASK_1dLoss.png'.format(iteration)))
-        plot_2d(Y, Z_X2, os.path.join(result_dir,'iter_{}_10xStepxMASK_1dLoss.png'.format(iteration)))
-        plot_2d(Y, Z_Y, os.path.join(result_dir,'iter_{}_1.0xGradient_1dLoss.png'.format(iteration)))
-        plot_2d(Y, Z_Y2, os.path.join(result_dir,'iter_{}_0.1xGradient_1dLoss.png'.format(iteration)))
-        
-        Z_X = get_1D_Loss(X, step_X_, step_X.size(), ['mat_0', 'bias_0'], data['in_train'], model_cls, params)
-        Z_X2 = get_1D_Loss(X, step_X2_, step_X.size(), ['mat_0', 'bias_0'], data['in_train'], model_cls, params)
-        Z_Y = get_1D_Loss(Y, step_Y_, step_Y.size(), ['mat_0', 'bias_0'],data['in_train'], model_cls, params)
-        Z_Y2 = get_1D_Loss(Y, step_Y2_, step_Y.size(), ['mat_0', 'bias_0'],data['in_train'], model_cls, params)
-        result_dir = 'result/savefig_layer0'
-        if not os.path.exists(result_dir):
-          os.makedirs(result_dir)
-        plot_2d(X, Z_X, os.path.join(result_dir, 'iter_{}_STEPxMASK_1dLoss.png'.format(iteration)))
-        plot_2d(Y, Z_X2, os.path.join(result_dir,'iter_{}_10xStepxMASK_1dLoss.png'.format(iteration)))
-        plot_2d(Y, Z_Y, os.path.join(result_dir,'iter_{}_1.0xGradient_1dLoss.png'.format(iteration)))
-        plot_2d(Y, Z_Y2, os.path.join(result_dir,'iter_{}_0.1xGradient_1dLoss.png'.format(iteration)))
-        
-        Z_X = get_1D_Loss(X, step_X_, step_X.size(), ['mat_1', 'bias_1'], data['in_train'], model_cls, params)
-        Z_X2 = get_1D_Loss(X, step_X2_, step_X.size(), ['mat_1', 'bias_1'], data['in_train'], model_cls, params)
-        Z_Y = get_1D_Loss(Y, step_Y_, step_Y.size(), ['mat_1', 'bias_1'],data['in_train'], model_cls, params)
-        Z_Y2 = get_1D_Loss(Y, step_Y2_, step_Y.size(), ['mat_1', 'bias_1'],data['in_train'], model_cls, params)
-        result_dir = 'result/savefig_layer1'
-        if not os.path.exists(result_dir):
-          os.makedirs(result_dir)
-        plot_2d(X, Z_X, os.path.join(result_dir, 'iter_{}_STEPxMASK_1dLoss.png'.format(iteration)))
-        plot_2d(Y, Z_X2, os.path.join(result_dir,'iter_{}_10xStepxMASK_1dLoss.png'.format(iteration)))
-        plot_2d(Y, Z_Y, os.path.join(result_dir,'iter_{}_1.0xGradient_1dLoss.png'.format(iteration)))
-        plot_2d(Y, Z_Y2, os.path.join(result_dir,'iter_{}_0.1xGradient_1dLoss.png'.format(iteration)))
+        layer_settings = [['mat_0', 'bias_0', 'mat_1', 'bias_1'], ['mat_0', 'bias_0'], ['mat_1', 'bias_1']]
+        result_dirs = ['result/savefig_all', 'result/savefig_layer0', 'result/savefig_layer1']
+        for layer_set, result_dir in zip(layer_settings, result_dirs):
+          if not os.path.exists(result_dir):
+            os.makedirs(result_dir)
+          step_X_ = params.new_from_flat(-1.0 * step_X)
+          step_Y_ = params.new_from_flat(1.0 * step_Y)
+          #step_X2_ = params.new_from_flat(-10.0 * step_X)
+          #step_Y2_ = params.new_from_flat(0.1 * step_Y)
+          abs_X = step_X_.abs().sum()
+          abs_Y = step_Y_.abs().sum()
+          scale_X, scale_Y = 0, 0
+          for layer in layer_set:
+            scale_X += abs_X.unflat[layer].item()
+            scale_Y += abs_Y.unflat[layer].item()
+          scale_g = scale_X/scale_Y
+          #import pdb; pdb.set_trace()
+          #step_Y_ = step_Y_ * (step_X_.abs().sum() /  step_Y_.abs().sum())
+          
+          Z_X = get_1D_Loss(X, step_X_, 1.0, step_X.size(), layer_set, data['in_train'], model_cls, params)
+          Z_Y = get_1D_Loss(Y, step_Y_, scale_g, step_Y.size(), layer_set,data['in_train'], model_cls, params)
+          #Z_X2 = get_1D_Loss(X, step_X2_, scale, step_X.size(), layer_set, data['in_train'], model_cls, params)
+          #Z_Y2 = get_1D_Loss(Y, step_Y2_, scale,step_Y.size(), layer_set,data['in_train'], model_cls, params)
+          plot_2d(X, Z_X, os.path.join(result_dir, 'iter_{}_STEPxMASK_1dLoss.png'.format(iteration)))
+          plot_2d(Y, Z_Y, os.path.join(result_dir,'iter_{}_1.0xGradient_1dLoss.png'.format(iteration)))
+          #plot_2d(Y, Z_X2, os.path.join(result_dir,'iter_{}_10xStepxMASK_1dLoss.png'.format(iteration)))
+          #plot_2d(Y, Z_Y2, os.path.join(result_dir,'iter_{}_0.1xGradient_1dLoss.png'.format(iteration)))
+          
           
 
       # result dict
@@ -381,7 +373,7 @@ class Optimizer(nn.Module):
         )
     return mask_result
 
-def get_1D_Loss(X, step_X_, flat_size, layers, dataset, model_cls, params):
+def get_1D_Loss(X, step_X_, scale, flat_size, layers, dataset, model_cls, params):
   Z = np.zeros(len(X))
   temp = np.zeros(len(X))
   for axis_x in tqdm(range(len(X))):
@@ -389,7 +381,7 @@ def get_1D_Loss(X, step_X_, flat_size, layers, dataset, model_cls, params):
     direction = params.new_from_flat(torch.zeros(flat_size).cuda())
     for layer in layers:
       direction.unflat[layer] = step_X_.unflat[layer]
-    X_scale = params.new_from_flat(X[axis_x] * torch.ones(flat_size).cuda())
+    X_scale = params.new_from_flat(scale * X[axis_x] * torch.ones(flat_size).cuda())
     step_X__ =  X_scale * direction
     
     params_z = params + step_X__
