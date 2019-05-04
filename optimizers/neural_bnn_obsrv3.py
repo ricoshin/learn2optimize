@@ -126,8 +126,10 @@ class Optimizer(nn.Module):
         mask_mean, mask_var = mask_cat.mean(dim=0), mask_cat.var(dim=0)
         hist_mean, bins_mean  = np.histogram(np.array(mask_mean.detach().cpu()))
         hist_var, bins_var = np.histogram(np.array(mask_var.detach().cpu()))
-        drop = 
-        retain = 
+        # drop = 
+        # retain = 
+        # certain = 
+        # uncertain = 
         import pdb; pdb.set_trace()
         mask_sum /= sample_num
         mask = mask>0.5
