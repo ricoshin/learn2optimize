@@ -1,5 +1,8 @@
+"""Mutiple mask: sparse loss landcapes observation"""
+
 import math
 import os
+import pdb
 
 import numpy as np
 import torch
@@ -22,8 +25,8 @@ from utils.timer import Walltime, WalltimeChecker
 from utils.torchviz import make_dot
 
 C = utils.getCudaManager('default')
-debug_sigint = utils.getDebugger('SIGINT')
-debug_sigstp = utils.getDebugger('SIGTSTP')
+sigint = utils.getSignalCatcher('SIGINT')
+sigstp = utils.getSignalCatcher('SIGTSTP')
 
 
 class Optimizer(nn.Module):
@@ -45,16 +48,21 @@ class Optimizer(nn.Module):
   def params(self, optimizer_params):
     optimizer_params.to_optimizer(self)
 
-  def meta_optimize(self, meta_optimizer, data, model_cls, optim_it, unroll,
-                    out_mul, writer, mode='train'):
+  def set_mode(self, mode):
     assert mode in ['train', 'valid', 'test']
     if mode == 'train':
       self.train()
     else:
       self.eval()
 
-    lipschitz = False
+  def meta_optimize(self, meta_optimizer, data, model_cls, optim_it, unroll,
+                    out_mul, writer, mode='train'):
+    assert mode in ['train', 'valid', 'test']
 
+
+
+
+    lipschitz = False
     if lipschitz:
       writer.new_subdirs('best', 'any', 'rand', 'inv', 'dense')
 
@@ -71,15 +79,9 @@ class Optimizer(nn.Module):
 
     set_size = {'layer_0': 500, 'layer_1': 10}  # NOTE: make it smarter
 
-    for iteration in iter_pbar:
-      if debug_sigint.signal_on:
-        debug_1 = iteration == 1 or iteration % 10 == 0
-      else:
-        debug_1 = False
-      if debug_sigstp.signal_on:
-        debug_2 = True
-      else:
-        debug_2 = False
+    for iter in iter_pbar:
+      debug_1 = sigint.is_active(iter == 1 or iter % 10 == 0)
+      debug_2 = sigstp.is_active()
 
       cand_params = []
       cand_losses = []
@@ -118,9 +120,8 @@ class Optimizer(nn.Module):
           step = params.new_from_flat(step_out[0])
 
           # prunning
-          if debug_2:
-            import pdb
-            pdb.set_trace()
+          if debug_2: pdb.set_trace()
+
           mask = ParamsFlattener(mask)
           mask_layout = mask.expand_as(params)
           step_sparse = step * mask_layout
@@ -162,7 +163,7 @@ class Optimizer(nn.Module):
       # _, best_params = inversed_masked_params(params, best_mask, step, set_size, sparse_r)
       _, best_params = random_masked_params(params, step, set_size, sparse_r)
 
-      if lipschitz and iteration % 10 == 0:
+      if lipschitz and iter % 10 == 0:
 
         params_pruned_inv = inversed_masked_params(
             params, best_mask, step, set_size, sparse_r)
@@ -197,7 +198,7 @@ class Optimizer(nn.Module):
         total_test = test_nll + test_kld
 
         if mode == 'train':
-          if not iteration % unroll == 0:
+          if not iter % unroll == 0:
             unroll_losses += total_test
           else:
             meta_optimizer.zero_grad()
@@ -207,7 +208,7 @@ class Optimizer(nn.Module):
             unroll_losses = 0
 
       with WalltimeChecker(walltime):
-        if not mode == 'train' or iteration % unroll == 0:
+        if not mode == 'train' or iter % unroll == 0:
           # self.mask_gen.detach_lambdas_()
           self.step_gen.lr = self.step_gen.log_lr.detach()
           params = params.detach_()
@@ -226,10 +227,10 @@ class Optimizer(nn.Module):
       log_pbar(result, iter_pbar)
 
       # if writer:
-      #   log_tf_event(result, tf_writer, iteration, 'meta-test/wallclock')
-      #   log_tf_event(result, tf_writer, iteration, 'meta-test/wallclock')
+      #   log_tf_event(result, tf_writer, iter, 'meta-test/wallclock')
+      #   log_tf_event(result, tf_writer, iter, 'meta-test/wallclock')
 
-      if writer and lipschitz and iteration % 10 == 0:
+      if writer and lipschitz and iter % 10 == 0:
         lips_b = dict(
             lips_t=np.prod([l for l in lips_best.values()]),
             **lips_best
@@ -250,11 +251,11 @@ class Optimizer(nn.Module):
             lips_t=np.prod([l for l in lips_dense.values()]),
             **lips_dense
         )
-        log_tf_event(lips_b, writer_best, iteration, 'lipschitz constant')
-        log_tf_event(lips_a, writer_any, iteration, 'lipschitz constant')
-        log_tf_event(lips_r, writer_rand, iteration, 'lipschitz constant')
-        log_tf_event(lips_i, writer_inv, iteration, 'lipschitz constant')
-        log_tf_event(lips_d, writer_dense, iteration, 'lipschitz constant')
+        log_tf_event(lips_b, writer_best, iter, 'lipschitz constant')
+        log_tf_event(lips_a, writer_any, iter, 'lipschitz constant')
+        log_tf_event(lips_r, writer_rand, iter, 'lipschitz constant')
+        log_tf_event(lips_i, writer_inv, iter, 'lipschitz constant')
+        log_tf_event(lips_d, writer_dense, iter, 'lipschitz constant')
 
       # desc = [f'{k}: {v:5.5}' for k, v in result.items()]
       # iter_pbar.set_description(f"inner_loop [ {' / '.join(desc)} ]")

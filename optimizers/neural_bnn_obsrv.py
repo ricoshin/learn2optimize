@@ -1,3 +1,5 @@
+"""Single mask"""
+
 import math
 
 import numpy as np
@@ -18,8 +20,8 @@ from utils.torchviz import make_dot
 from optimize import log_pbar
 
 C = utils.getCudaManager('default')
-debug_sigint = utils.getDebugger('SIGINT')
-debug_sigstp = utils.getDebugger('SIGTSTP')
+debug_sigint = utils.getSignalCatcher('SIGINT')
+debug_sigstp = utils.getSignalCatcher('SIGTSTP')
 
 
 class Optimizer(nn.Module):

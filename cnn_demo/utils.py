@@ -22,7 +22,7 @@ _cuda_managers = {}
 _debuggers = {}
 
 
-def getDebugger(name):
+def getSignalCatcher(name):
   if name not in _debuggers:
     _debuggers.update({name: Debugger(name)})
   return _debuggers[name]

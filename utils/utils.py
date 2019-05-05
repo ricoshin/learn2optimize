@@ -22,9 +22,9 @@ _cuda_managers = {}
 _debuggers = {}
 
 
-def getDebugger(name):
+def getSignalCatcher(name):
   if name not in _debuggers:
-    _debuggers.update({name: Debugger(name)})
+    _debuggers.update({name: SignalCatcher(name)})
   return _debuggers[name]
   # global _debugger
   # if _debugger is None:
@@ -32,28 +32,30 @@ def getDebugger(name):
   # return _debugger
 
 
-class Debugger(object):
+class SignalCatcher(object):
   def __init__(self, name):
     self.name = name
     self._signal = getattr(signal, name)
+    self._cond_func = None
     self.signal_on = False
-    self._set_sigint()
+    self._set_signal()
 
-  def _set_sigint(self):
-    def _toggle_signal(signal, frame):
+  def _set_signal(self):
+    def _toggle_func(signal, frame):
       if self.signal_on:
         self.signal_on = False
         print(f'Signal {self.name} Off!')
       else:
         self.signal_on = True
         print(f'Signal {self.name} On!')
-    signal.signal(self._signal, _toggle_signal)
+    signal.signal(self._signal, _toggle_func)
 
-  def debug(self):
-    if self.signal_on:
-      print(f"Signal {self.name}: Enter 'n' to go to the breakpoint!")
-      import pdb
-      pdb.set_trace()
+  def is_active(self, cond=True):
+    assert isinstance(cond, bool)
+    if self.signal_on and cond:
+      return True
+    else:
+      return False
 
 
 def getCudaManager(name):

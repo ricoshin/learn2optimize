@@ -15,8 +15,8 @@ from utils.result import ResultDict
 from utils.torchviz import make_dot
 
 C = utils.getCudaManager('default')
-debug_sigint = utils.getDebugger('SIGINT')
-debug_sigstp = utils.getDebugger('SIGTSTP')
+debug_sigint = utils.getSignalCatcher('SIGINT')
+debug_sigstp = utils.getSignalCatcher('SIGTSTP')
 
 
 class LSTMCell(nn.Module):
