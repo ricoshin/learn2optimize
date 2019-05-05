@@ -24,7 +24,9 @@ from utils.eval import (eval_gauss_var, eval_lipschitz, inversed_masked_params,
 from utils.result import ResultDict
 from utils.timer import Walltime, WalltimeChecker
 from utils.torchviz import make_dot
-
+###
+from optimizers.analyze_model import *
+###
 C = utils.getCudaManager('default')
 sigint = utils.getSignalCatcher('SIGINT')
 sigstp = utils.getSignalCatcher('SIGTSTP')
@@ -60,7 +62,13 @@ class Optimizer(OptimizerBase):
     self.step_gen.new()
     iter_pbar = tqdm(range(1, optim_it + 1), 'Inner_loop')
     # iter_watch = utils.StopWatch('Inner_loop')
-
+    ################
+    mask_dict = ResultDict()
+    analyze_mask = True
+    sample_mask = True
+    topk = True
+    draw_loss = True
+    ################
     set_size = {'layer_0': 500, 'layer_1': 10}  # NOTE: make it smarter
 
     for iter in iter_pbar:
@@ -194,6 +202,22 @@ class Optimizer(OptimizerBase):
         if not mode == 'train' or iter % unroll == 0:
           params = params.detach_()
 
+      ##############################################################
+      text_dir = 'test/analyze_mask'
+      result_dir = 'test/drawloss'
+      sample_dir = 'test/mask_compare'
+      iter_interval = 10
+      sample_num = 10000
+      if analyze_mask:
+        analyzing_mask(self.mask_gen, layer_size, mode, iter, iter_interval, text_dir)
+      if sample_mask:
+        mask_result = sampling_mask(self.mask_gen, layer_size, model_train, params, sample_num, mode, iter, iter_interval, sample_dir)
+        if mask_result is not None:
+          mask_dict.append(mask_result)
+      if draw_loss:
+        plot_loss(model_cls=model_cls, model=model_train, params=params, input_data=data['in_train'].load(), dataset=data['in_train'], 
+            feature_gen=self.feature_gen, mask_gen=self.mask_gen, step_gen=self.step_gen, scale_way=None, xmin=-2.0, xmax=0.5, num_x=20, mode=mode, iteration=iter, iter_interval=iter_interval, loss_dir=result_dir)
+      ##############################################################
       # import pdb; pdb.set_trace()
       # result dict
       result = dict(
@@ -236,5 +260,6 @@ class Optimizer(OptimizerBase):
         log_tf_event(lips_r, writer_rand, iter, 'lipschitz constant')
         log_tf_event(lips_i, writer_inv, iter, 'lipschitz constant')
         log_tf_event(lips_d, writer_dense, iter, 'lipschitz constant')
-
+    if sample_mask:
+      plot_mask_result(mask_dict, sample_dir)
     return result_dict
