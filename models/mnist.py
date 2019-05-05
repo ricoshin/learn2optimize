@@ -15,25 +15,29 @@ from utils import utils
 C = utils.getCudaManager('default')
 
 
-class DataloaderWrapper(object):
-  """Just a simple wrapper for dataloader to load data whenever neccessary
+class IterDataLoader(object):
+  """Just a simple custom dataloader to load data whenever neccessary
   without forcibley using iterative loops.
   """
-  def __init__(self, dataloader):
-    self.dataloader = dataloader
-    self.dataloader_iter = iter(dataloader)
+  def __init__(self, dataset, batch_size, sampler=None):
+    self.dataset = dataset
+    self.dataloader = data.DataLoader(dataset, batch_size, sampler)
+    self.iterator = iter(self.dataloader)
 
   def __len__(self):
     return len(self.dataloader)
 
-  def load(self):
-    try:
-      return next(self.dataloader_iter)
-    except StopIteration:
-      self.dataloader_iter = iter(self.dataloader)
-      return next(self.dataloader_iter)
-    except AttributeError:
-      import pdb; pdb.set_trace()
+  def load(self, eternal=True):
+    if eternal:
+      try:
+        return next(self.iterator)
+      except StopIteration:
+        self.iterator = iter(self.dataloader)
+        return next(self.iterator)
+      except AttributeError:
+        import pdb; pdb.set_trace()
+    else:
+      return next(self.iterator)
 
   @property
   def batch_size(self):
@@ -42,6 +46,18 @@ class DataloaderWrapper(object):
   @property
   def full_size(self):
     return self.batch_size * len(self)
+
+  def new_batchsize(self):
+    self.dataloader
+
+  @classmethod
+  def from_dataset(cls, dataset, batch_size, rand_with_replace=True):
+    if rand_with_replace:
+      sampler = data.sampler.RandomSampler(dataset, replacement=True)
+    else:
+      sampler = None
+    # loader = data.DataLoader(dataset, batch_size=batch_size, sampler=sampler)
+    return cls(dataset, batch_size, sampler)
 
 
 class MNISTData:
@@ -73,9 +89,9 @@ class MNISTData:
     if fixed and self.meta_train:
       return self.meta_train
     inner_train, inner_test = self._random_split(self.m_train_d, ratio)
-    self.meta_train['in_train'] = self._get_wrapped_dataloader(
+    self.meta_train['in_train'] = IterDataLoader.from_dataset(
       inner_train, self.batch_size)
-    self.meta_train['in_test'] = self._get_wrapped_dataloader(
+    self.meta_train['in_test'] = IterDataLoader.from_dataset(
       inner_test, self.batch_size)
     return self.meta_train
 
@@ -84,9 +100,9 @@ class MNISTData:
     if fixed and self.meta_valid:
       return self.meta_valid
     inner_train, inner_test = self._random_split(self.m_valid_d, ratio)
-    self.meta_valid['in_train'] = self._get_wrapped_dataloader(
+    self.meta_valid['in_train'] = IterDataLoader.from_dataset(
       inner_train, self.batch_size)
-    self.meta_valid['in_test'] = self._get_wrapped_dataloader(
+    self.meta_valid['in_test'] = IterDataLoader.from_dataset(
       inner_test, self.batch_size)
     return self.meta_valid
 
@@ -95,9 +111,9 @@ class MNISTData:
     if fixed and self.meta_test:
       return self.meta_test
     inner_train, inner_test = self._random_split(self.m_test_d, ratio)
-    self.meta_test['in_train'] = self._get_wrapped_dataloader(
+    self.meta_test['in_train'] = IterDataLoader.from_dataset(
       inner_train, self.batch_size)
-    self.meta_test['in_test'] = self._get_wrapped_dataloader(
+    self.meta_test['in_test'] = IterDataLoader.from_dataset(
       inner_test, self.batch_size)
     return self.meta_test
 
@@ -134,7 +150,7 @@ class MNISTData:
   def _get_wrapped_dataloader(self, dataset, batch_size):
     sampler = data.sampler.RandomSampler(dataset, replacement=True)
     loader = data.DataLoader(dataset, batch_size=batch_size, sampler=sampler)
-    return DataloaderWrapper(loader)
+    return IterDataLoader(loader)
 
   def pseudo_sample(self):
     """return pseudo sample for checking activation size."""
@@ -262,8 +278,12 @@ class MNISTModel(nn.Module):
       i += 1
 
     if out is not None:
+      out = C(out)
       inp = F.log_softmax(inp, dim=1)
-      loss = self.loss(inp, C(out))
+      loss = self.loss(inp, out)
+      acc = (inp.argmax(dim=1) == out).float().mean()
     else:
       loss = None
-    return loss
+      acc = None
+
+    return loss, acc

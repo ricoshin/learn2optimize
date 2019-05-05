@@ -28,7 +28,7 @@ class RelaxedBetaBernoulli(nn.Module):
   def sample_pi(self, a, b):
     """Sample pi from Beta(Kumaraswamy) distribution with parameter a and b."""
     assert a.size() == b.size()
-    u = C(torch.rand(a.size(0)).clamp(1e-6, 1 - 1e-6))
+    u = C(torch.rand(a.size(0)).clamp(1e-8, 1 - 1e-8))
     return (1 - u.pow_(1. / b)).pow_(1. / a)
 
   def get_Epi(self, a, b):

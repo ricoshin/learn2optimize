@@ -139,6 +139,10 @@ class ResultDict(dict):
     return ResultDict({k: np.array(v).mean(*args, **kwargs)\
       for k, v in self.items()})
 
+  def var(self, *args, **kwargs):
+    return ResultDict({k: np.array(v).var(*args, **kwargs)\
+      for k, v in self.items()})
+
   def save(self, name, save_dir, tag=''):
     if save_dir is None:
       return self

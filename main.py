@@ -74,7 +74,7 @@ def main():
     if name not in args.retrain and OptimizerParams.is_loadable(name, load_dir):
       params[name] = OptimizerParams.load(name, load_dir).save(name, save_dir)
     else:
-      print(f"\n\n\nTraining neural optimizer: {name}")
+      print(f"\nTraining neural optimizer: {name}")
       kwargs = neural_optimizers[name]['train_args']
       print(f"Module name: {kwargs['optim_module']}")
       params[name] = train_neural(name, save_dir, **problem, **kwargs)
@@ -88,7 +88,7 @@ def main():
       results[name] = ResultDict.load(name, load_dir).save(name, save_dir)
     else:
       if name in normal_optimizers:
-        print(f'\n\nOptimizing with static optimizer: {name}')
+        print(f'\nOptimizing with static optimizer: {name}')
         kwargs = normal_optimizers[name]
         result = test_normal(name, save_dir, **problem, **kwargs)
         results[name] = result

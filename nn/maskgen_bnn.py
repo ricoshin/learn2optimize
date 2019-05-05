@@ -138,8 +138,9 @@ class FeatureGenerator(nn.Module):
 
 
 class StepGenerator(nn.Module):
-  def __init__(self, hidden_sz=32, out_temp=1e-2, drop_rate=0.2):
+  def __init__(self, hidden_sz, drop_rate, out_temp=1e-2):
     super().__init__()
+    print(f'drop_rate: {drop_rate}')
     self.output_sz = 1  # log learning rate, update direction
     self.hidden_sz = hidden_sz
     self.out_temp = out_temp
@@ -175,7 +176,8 @@ class StepGenerator(nn.Module):
     """
     assert x.size(1) == self.output_sz
     out_1 = x[:, 0]  # * self.out_temp
-    step = out_1 * v_sqrt[:,-1].repeat(n)
+    # step = out_1.repeat(n) * 0.1
+    step = out_1 * v_sqrt[:,-1].detach().repeat(n)
     # out_2 = x[:, 1]  # * self.out_temp # NOTE: normalizing?
     # # out_3 = x[:, 2]
     # # out_3 = out_3.div(out_3.norm(p=2).detach())
@@ -195,7 +197,7 @@ class StepGenerator(nn.Module):
 
 
 class MaskGenerator(nn.Module):
-  def __init__(self, hidden_sz=512):
+  def __init__(self, hidden_sz=32):
     super().__init__()
     self.hidden_sz = hidden_sz
     self.gamm_g = None

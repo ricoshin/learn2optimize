@@ -14,7 +14,7 @@ from torch.optim import SGD, Adam, RMSprop
 from tqdm import tqdm
 from utils import utils
 from utils.result import ResultDict
-from utils.utils import TFWriter
+from utils.utils import TFWriter, ReduceLROnPlateau
 from utils.timer import Walltime, WalltimeChecker
 
 C = utils.getCudaManager('default')
@@ -30,7 +30,7 @@ def _get_optim_by_name(name):
 
 
 def log_pbar(result_dict, pbar, keys=None):
-  desc = [f'{k}: {v:5.5f}' for k, v in result_dict.items()\
+  desc = [f'{k}: {v:3.3f}' for k, v in result_dict.items()\
     if keys is None or k not in keys]
   pbar.set_description(f"{pbar.desc.split(' ')[0]} [ {' / '.join(desc)} ]")
 
@@ -62,31 +62,34 @@ def train_neural(
   # TODO: handle variable arguments according to different neural optimziers
 
   """meta-optimizer"""
+
   meta_optim = 'SGD'
+  lr_scheduling = True
   # meta_optim = 'Adam'
-  wd = 1e-5
-  print(f'meta optimizer: {meta_optim} / lr: {lr} / wd: {wd}')
-  meta_optim = getattr(torch.optim, meta_optim)
-  meta_optim = meta_optim(optimizer.parameters(), lr=lr, weight_decay=wd)
-
-  # scheduler = torch.optim.lr_scheduler.MultiStepLR(
-  #   meta_optim, milestones=[1, 2, 3, 4], gamma=0.1)
-  # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-  #   meta_optim, mode='min', factor=0.5, patience=0, cooldown=0, verbose=1)
-
-  # step_lr = 1e-2
-  # mask_lr = 1e-2
-  # p_feat = optimizer.feature_gen.parameters()
-  # p_step = optimizer.step_gen.parameters()
-  # p_mask = optimizer.mask_gen.parameters()
-  #
-  # meta_optim = optim.Adam([
-  #     {'params':p_feat, 'lr':step_lr, 'weight_decay':1e-4},
-  #     {'params':p_step, 'lr':step_lr, 'weight_decay':1e-4},
-  #     {'params':p_mask, 'lr':mask_lr},
-  # ])
-
-  # print(f'step_lr: {step_lr} / mask_lr: {mask_lr}')
+  if 'bnn' not in optim_module:
+    wd = 1e-5
+    print(f'meta optimizer: {meta_optim} / lr: {lr} / wd: {wd}\n')
+    meta_optim = getattr(torch.optim, meta_optim)(
+      optimizer.parameters(), lr=lr, weight_decay=wd)
+    # scheduler = torch.optim.lr_scheduler.MultiStepLR(
+    #   meta_optim, milestones=[1, 2, 3, 4], gamma=0.1)
+  else:
+    wd = 1e-5
+    # mask_lr = 0.1  # seperate mask lr
+    mask_lr = lr  # same mask lr
+    print(f'meta optimizer: {meta_optim} / gen_lr: {lr} '
+          f'/ mask_lr:{mask_lr} / wd: {wd}\n')
+    p_feat = optimizer.feature_gen.parameters()
+    p_step = optimizer.step_gen.parameters()
+    p_mask = optimizer.mask_gen.parameters()
+    meta_optim = getattr(torch.optim, meta_optim)([
+        {'params':p_feat, 'lr':lr, 'weight_decay':wd},
+        {'params':p_step, 'lr':lr, 'weight_decay':wd},
+        {'params':p_mask, 'lr':mask_lr},
+    ])
+  if lr_scheduling:
+    scheduler = ReduceLROnPlateau(
+      meta_optim, mode='min', factor=0.5, patience=1, verbose=True)
 
   data = data_cls()
   best_params = None
@@ -102,8 +105,8 @@ def train_neural(
     # Meta-training
     for j in train_pbar:
       train_data = data.sample_meta_train()
-      result_inner = optimizer.meta_optimize(meta_optim, train_data,model_cls,
-        iter_train, unroll, out_mul, writer, 'train')
+      result_inner, _ = optimizer.meta_optimize(meta_optim, train_data,
+        model_cls, iter_train, unroll, out_mul, writer, 'train')
       mean = result_inner.mean()
       log_pbar(mean, train_pbar)
       if save_dir:
@@ -116,10 +119,14 @@ def train_neural(
     result_outer = ResultDict()
     for j in valid_pbar:
       valid_data = data.sample_meta_valid()
-      result_inner = optimizer.meta_optimize(meta_optim, valid_data, model_cls,
-        iter_valid, unroll, out_mul, writer, 'valid')
+      result_inner, _ = optimizer.meta_optimize(meta_optim, valid_data,
+        model_cls, iter_valid, unroll, out_mul, writer, 'valid')
       result_outer.append(result_inner)
-      log_pbar(result_inner.mean() , valid_pbar)
+      result_mean = result_inner.mean()
+      log_pbar(result_mean , valid_pbar)
+
+    if lr_scheduling:
+      scheduler.step(result_mean['test_nll'])
 
     # Log TF-event: averaged valid loss
     mean_all = result_outer.mean()
@@ -164,15 +171,20 @@ def test_neural(name, save_dir, learned_params, data_cls, model_cls,
 
   best_test = 999999
   result_outer = ResultDict()
+  result_final = ResultDict()  # test loss & acc for the whole testset
   tests_pbar = tqdm(range(n_test), 'test')
 
   # Meta-test
   for j in tests_pbar:
     data = data_cls().sample_meta_test()
-    result_inner = optimizer.meta_optimize(meta_optim, data, model_cls,
+    result_inner, params = optimizer.meta_optimize(meta_optim, data, model_cls,
       iter_test, unroll, out_mul, writer, 'test')
     result_outer.append(result_inner)
-    # Update test progress bar
+    # NOTE: we are not using best_test snapshot for final inner evaluation
+    #   since there is no guarentee that it has reached the minimum
+    #   w.r.t. the whole test set.
+    model = C(model_cls(params=params))
+    result_final.append(final_inner_test(model, data['in_test']))
     last_test = result_inner.mean()['test_nll']
     mean_test = result_outer.mean()['test_nll']
     if last_test < best_test:
@@ -190,6 +202,8 @@ def test_neural(name, save_dir, learned_params, data_cls, model_cls,
       log_tf_event(writer, 'meta_test_inner', mean, i, walltime)
     result_outer.save(name, save_dir)
     result_outer.save_as_csv(name, save_dir, 'meta_test_inner')
+    result_final.save_as_csv(name, save_dir, 'meta_test_final', trans_1d=True)
+
   return result_outer
 
 
@@ -204,6 +218,7 @@ def test_normal(name, save_dir, data_cls, model_cls, optim_cls, optim_args,
 
   tests_pbar = tqdm(range(n_test), 'outer_test')
   result_outer = ResultDict()
+  result_final = ResultDict()  # test loss & acc for the whole testset
   best_test = 999999
   # params_tracker = ParamsIndexTracker(n_tracks=10)
 
@@ -213,34 +228,40 @@ def test_normal(name, save_dir, data_cls, model_cls, optim_cls, optim_args,
     model = C(model_cls())
     optimizer = optim_cls(model.parameters(), **optim_args)
 
-    iter_pbar = tqdm(range(iter_test), 'Inner_loop')
-    result_inner = ResultDict()
     walltime = Walltime()
+    result_inner = ResultDict()
+    iter_pbar = tqdm(range(iter_test), 'inner_train')
 
     # Inner loop (iter_test)
     for k in iter_pbar:
 
       with WalltimeChecker(walltime):
         # Inner-training loss
-        train_nll = model(*data['in_train'].load())
+        train_nll, train_acc = model(*data['in_train'].load())
         optimizer.zero_grad()
         train_nll.backward()
         # before = model.params.detach('hard').flat
         optimizer.step()
       # Inner-test loss
-      test_nll = model(*data['in_test'].load())
+
+      test_nll, test_acc = model(*data['in_test'].load())
       # update = model.params.detach('hard').flat - before
       # grad = model.params.get_flat().grad
       result_iter = dict(
         train_nll=train_nll.tolist(),
         test_nll=test_nll.tolist(),
+        train_acc=train_acc.tolist(),
+        test_acc=test_acc.tolist(),
         walltime=walltime.time,
         )
       log_pbar(result_iter, iter_pbar)
       result_inner.append(result_iter)
 
     result_outer.append(result_inner)
-    # Update test progress bar
+    result_final.append(final_inner_test(model, data['in_test']))
+    # NOTE: we are not using best_test snapshot for final inner evaluation
+    #   since there is no guarentee that it has reached the minimum
+    #   w.r.t. the whole test set.
     last_test = result_inner.mean()['test_nll']
     mean_test = result_outer.mean()['test_nll']
     if last_test < best_test:
@@ -258,7 +279,29 @@ def test_normal(name, save_dir, data_cls, model_cls, optim_cls, optim_args,
       log_tf_event(writer, 'meta_test_inner', mean, i, walltime)
     result_outer.save(name, save_dir)
     result_outer.save_as_csv(name, save_dir, 'meta_test_inner')
+    result_final.save_as_csv(name, save_dir, 'meta_test_final', trans_1d=True)
+
   return result_outer
+
+def final_inner_test(model, data, batch_size=2000):
+  data_new = data.from_dataset(
+    data.dataset, batch_size, rand_with_replace=False)
+  loss_mean = []
+  acc_mean = []
+  sizes = []
+  n_batch = range(len(data_new))
+  for x, y in tqdm(data_new.iterator, 'final_inner_test'):
+    loss, acc = model(x, y)
+    loss_mean.append(loss)
+    acc_mean.append(acc)
+    sizes.append(y.size(0))
+  # average weighted by the corresponding batch size
+  loss_mean = torch.stack(loss_mean, 0)
+  acc_mean = torch.stack(acc_mean, 0)
+  sizes = C(torch.tensor(sizes)).float()
+  loss_mean = (loss_mean * sizes).sum() / sizes.sum()
+  acc_mean = (acc_mean * sizes).sum() / sizes.sum()
+  return {'loss_mean': loss_mean, 'acc_mean': acc_mean}
 
 
 def find_best_lr(lr_list, data_cls, model_cls, optim_module, optim_args, n_test,

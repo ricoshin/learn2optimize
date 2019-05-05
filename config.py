@@ -39,17 +39,18 @@ _neural_optimizers_quadratic = odict({
 
 _neural_optimizers_mnist = odict({
     'RNN-base': {
-        'train_args': odict(n_epoch=20, n_train=20, n_valid=5, iter_train=500,
-                            iter_valid=1000, unroll=20, lr=0.1),
-    },
+        'train_args': odict(n_epoch=50, n_train=20, n_valid=10, iter_train=500,
+                            iter_valid=2500, unroll=20, lr=1.0),
+    }, # SGD: 1.0 / Adam: 0.01
+
     # 'Proposed': {
     #     'train_args': odict(n_epoch=1, n_train=3, n_valid=3, iter_train=5,
     #                         iter_valid=5, unroll=20, lr=0.01),
     # },
     'Proposed': {
-        'train_args': odict(n_epoch=20, n_train=20, n_valid=5, iter_train=500,
-                            iter_valid=1000, unroll=20, lr=0.01),
-    },
+        'train_args': odict(n_epoch=50, n_train=20, n_valid=10, iter_train=500,
+                            iter_valid=2500, unroll=20, lr=1.0),
+    }, # SGD: 1.0 / Adam: ?
 })
 
 _neural_optimizers = odict({
@@ -62,7 +63,7 @@ _common_neural_args = {
     'RNN-base': odict(optim_module='neural_base', preproc=True, out_mul=0.1),
     # 'Proposed': odict(optim_module='neural_manual_obsrv2', preproc=True, out_mul=0.1),
     # 'Proposed': odict(optim_module='neural_bnn_obsrv', preproc=True, out_mul=0.1),
-    'Proposed': odict(optim_module='neural_bnn_obsrv', preproc=True, out_mul=0.1),
+    'Proposed': odict(optim_module='neural_bnn_obsrv3', preproc=True, out_mul=0.1),
 }
 
 ################################################################################
@@ -111,8 +112,10 @@ _normal_optimizers = odict({
   'mnist': _normal_optimizers_mnist,
 })
 
+"""NOTE: n_valid here is not for an actual inner-level held-out development set.
+  It just means n sampling of mini-set from inner-test."""
 _common_test_args_debug = odict(n_test=5, iter_test=200)
-_common_test_args = odict(n_test=5, iter_test=5000)
+_common_test_args = odict(n_test=10, iter_test=5000)
 # _common_test_args = odict(n_test=2, iter_test=5)
 
 ################################################################################
@@ -130,7 +133,7 @@ test_optimizers = ['Proposed']
 # test_optimizers = ['RNN-base','Proposed', 'ADAM']
 # test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM', 'Proposed')
 # train_optimizers = ()
-# test_optimizers = ('SGD')
+# test_optimizers = ('SGD',)
 # test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM')
 
 ################################################################################

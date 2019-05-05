@@ -31,13 +31,13 @@ sigstp = utils.getSignalCatcher('SIGTSTP')
 
 
 class Optimizer(OptimizerBase):
-  def __init__(self, hidden_sz=32, sb_mode='unified'):
+  def __init__(self, hidden_sz=20, drop_rate=0.2, sb_mode='unified'):
     super().__init__()
     assert sb_mode in ['none', 'normal', 'unified']
     self.hidden_sz = hidden_sz
     self.sb_mode = sb_mode
     self.feature_gen = FeatureGenerator(hidden_sz)
-    self.step_gen = StepGenerator(hidden_sz)
+    self.step_gen = StepGenerator(hidden_sz, drop_rate)
     self.mask_gen = MaskGenerator(hidden_sz)
     self.params_tracker = ParamsIndexTracker(n_tracks=10)
 
@@ -46,6 +46,8 @@ class Optimizer(OptimizerBase):
     assert mode in ['train', 'valid', 'test']
     self.set_mode(mode)
 
+    n_samples = 10
+    # print(f'mask n_samples: {n_samples}')
     lipschitz = False
     if lipschitz:
       writer.new_subdirs('best', 'any', 'rand', 'inv', 'dense')
@@ -58,8 +60,8 @@ class Optimizer(OptimizerBase):
     params = C(model_cls()).params
     self.feature_gen.new()
     self.step_gen.new()
-    iter_pbar = tqdm(range(1, optim_it + 1), 'Inner_loop')
-    # iter_watch = utils.StopWatch('Inner_loop')
+    iter_pbar = tqdm(range(1, optim_it + 1), 'inner_train')
+    # iter_watch = utils.StopWatch('inner_train')
 
     set_size = {'layer_0': 500, 'layer_1': 10}  # NOTE: make it smarter
 
@@ -77,13 +79,10 @@ class Optimizer(OptimizerBase):
       lips_inv = {}
       best_loss = 9999999
       best_params = None
-      n_samples = 10
-
-      # iter_watch.touch()
 
       with WalltimeChecker(walltime):
         model_train = C(model_cls(params=params.detach()))
-        train_nll = model_train(*data['in_train'].load())
+        train_nll, train_acc = model_train(*data['in_train'].load())
         train_nll.backward()
 
         g = model_train.params.grad.flat.detach()
@@ -117,7 +116,7 @@ class Optimizer(OptimizerBase):
 
           # cand_loss = model(*outer_data_s)
           sparse_model = C(model_cls(params=params_pruned.detach()))
-          loss = sparse_model(*data['in_train'].load())
+          loss, _ = sparse_model(*data['in_train'].load())
 
           # if debug_2:
           #   losses.append(loss.tolist())
@@ -142,7 +141,7 @@ class Optimizer(OptimizerBase):
       for k, v in set_size.items():
         r = (best_mask > 0.5).sum().unflat[k].tolist() / v
         n = k.split('_')[1]
-        sparse_r[f"sparse_{n}"] = r
+        sparse_r[f"sp_{n}"] = r
 
       # _, best_params = inversed_masked_params(params, best_mask, step, set_size, sparse_r)
       _, best_params = random_masked_params(params, step, set_size, sparse_r)
@@ -177,7 +176,7 @@ class Optimizer(OptimizerBase):
 
       with WalltimeChecker(walltime if mode == 'train' else None):
         model_test = C(model_cls(params=params))
-        test_nll = utils.isnan(model_test(*data['in_test'].load()))
+        test_nll, test_acc = utils.isnan(*model_test(*data['in_test'].load()))
         test_kld = kld / data['in_test'].full_size
         total_test = test_nll + test_kld
 
@@ -199,6 +198,8 @@ class Optimizer(OptimizerBase):
       result = dict(
           train_nll=train_nll.tolist(),
           test_nll=test_nll.tolist(),
+          train_acc=train_acc.tolist(),
+          test_acc=test_acc.tolist(),
           test_kld=test_kld.tolist(),
           walltime=walltime.time,
           **sparse_r,
@@ -237,4 +238,4 @@ class Optimizer(OptimizerBase):
         log_tf_event(lips_i, writer_inv, iter, 'lipschitz constant')
         log_tf_event(lips_d, writer_dense, iter, 'lipschitz constant')
 
-    return result_dict
+    return result_dict, params

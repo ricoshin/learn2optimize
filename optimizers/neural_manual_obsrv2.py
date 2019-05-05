@@ -57,8 +57,8 @@ class Optimizer(nn.Module):
     # adam = torch.optim.Adam(model.parameters())
     # adagrad = torch.optim.Adagrad(model.parameters())
 
-    iter_pbar = tqdm(range(1, optim_it + 1), 'Inner_loop')
-    iter_watch = utils.StopWatch('Inner_loop')
+    iter_pbar = tqdm(range(1, optim_it + 1), 'inner_train')
+    iter_watch = utils.StopWatch('inner_train')
 
     lr = 0.1
     topk = False
@@ -140,6 +140,6 @@ class Optimizer(nn.Module):
       result_dict.append(result)
       log_pbar(result, iter_pbar)
       # desc = [f'{k}: {v:5.5}' for k, v in result.items()]
-      # iter_pbar.set_description(f"inner_loop [ {' / '.join(desc)} ]")
+      # iter_pbar.set_description(f"inner_train [ {' / '.join(desc)} ]")
 
     return result_dict

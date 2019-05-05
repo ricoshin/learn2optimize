@@ -82,15 +82,14 @@ class Optimizer(OptimizerBase):
           updates=update,
       )
 
-    iter_pbar = tqdm(range(1, optim_it + 1), 'Inner_loop')
+    iter_pbar = tqdm(range(1, optim_it + 1), 'inner_train')
     for iter in iter_pbar:
 
       with WalltimeChecker(walltime):
         model_train = C(model_cls(params=params.detach()))
-        train_nll = model_train(*data['in_train'].load())
+        train_nll, train_acc = model_train(*data['in_train'].load())
         train_nll.backward()
         assert model_train.params.flat.grad is not None
-        p = model_train.params.flat
         g = model_train.params.flat.grad
 
         if use_indexer:
@@ -120,7 +119,7 @@ class Optimizer(OptimizerBase):
 
       with WalltimeChecker(walltime if mode == 'train' else None):
         model_test = C(model_cls(params=params))
-        test_nll = model_test(*data['in_test'].load())
+        test_nll, test_acc = model_test(*data['in_test'].load())
         if mode == 'train':
           unroll_losses += test_nll
           if iter % unroll == 0:
@@ -142,9 +141,11 @@ class Optimizer(OptimizerBase):
       result = dict(
         train_nll=train_nll.tolist(),
         test_nll=test_nll.tolist(),
+        train_acc=train_acc.tolist(),
+        test_acc=test_acc.tolist(),
         walltime=walltime.time,
       )
       result_dict.append(result)
       log_pbar(result, iter_pbar)
 
-    return result_dict
+    return result_dict, params

@@ -32,10 +32,10 @@ class WalltimeShouter(object):
     self.watch = StopWatch(mode)
 
   def __enter__(self):
-    self.touch()
+    self.watch.touch()
 
   def __exit__(self, type, value, trace_back):
-    self.touch(self.verbose)
+    self.watch.touch(self.verbose)
 
 
 class WalltimeChecker(object):

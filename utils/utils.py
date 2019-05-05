@@ -64,12 +64,13 @@ def getCudaManager(name):
   return _cuda_managers[name]
 
 
-def isnan(tensor):
-  assert isinstance(tensor, torch.Tensor)
-  if torch.isnan(tensor):
-    import pdb
-    pdb.set_trace()
-  return tensor
+def isnan(*args):
+  assert all([isinstance(arg, torch.Tensor) for arg in args])
+  for arg in args:
+    if torch.isnan(arg):
+      import pdb
+      pdb.set_trace()
+  return args
 
 
 def soft_detach(object):
@@ -210,6 +211,18 @@ class TFWriter(dict):
     assert all([isinstance(arg, str) for arg in args])
     for arg in args:
       self[arg] = SummaryWriter(os.path.join(self.top_dir, arg))
+
+
+class ReduceLROnPlateau(torch.optim.lr_scheduler.ReduceLROnPlateau):
+  def _reduce_lr(self, epoch):
+    for i, param_group in enumerate(self.optimizer.param_groups):
+      old_lr = float(param_group['lr'])
+      new_lr = max(old_lr * self.factor, self.min_lrs[i])
+      if old_lr - new_lr > self.eps:
+        param_group['lr'] = new_lr
+        if self.verbose:
+          print('\n\n\n\nepoch {:3d}: reducing learning rate'
+                ' of group {} to {:.8f}.'.format(epoch, i, new_lr))
 
 
 class Plotter(object):
