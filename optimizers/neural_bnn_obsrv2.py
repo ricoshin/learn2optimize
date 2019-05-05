@@ -17,7 +17,9 @@ from tqdm import tqdm
 from utils import utils
 from utils.result import ResultDict
 from utils.torchviz import make_dot
-
+###
+from optimizers.analyze_model import *
+###
 C = utils.getCudaManager('default')
 debug_sigint = utils.getSignalCatcher('SIGINT')
 debug_sigstp = utils.getSignalCatcher('SIGTSTP')
@@ -74,10 +76,15 @@ class Optimizer(nn.Module):
     walltime = 0
 
     self.feature_gen.new()
-
+    ################
+    mask_dict = ResultDict()
+    analyze_mask = False
+    sample_mask = False
+    draw_loss = False
+    ################
     iter_pbar = tqdm(range(1, optim_it + 1), 'optim_iteration')
     iter_watch = utils.StopWatch('optim_iteration')
-
+    
     res1 = None
     res2=[]
     res3=[]
@@ -179,6 +186,22 @@ class Optimizer(nn.Module):
       # iter_pbar.set_description(f'optim_iteration[loss:{loss_dense.tolist()}/dist:{dist.tolist()}]')
       # torch.optim.SGD(sparse_params, lr=0.1).step()
       walltime += iter_watch.touch('interval')
+      ##############################################################
+      text_dir = 'test/analyze_mask'
+      result_dir = 'test/drawloss'
+      sample_dir = 'test/mask_compare'
+      iter_interval = 10
+      sample_num = 10000
+      if mode == 'test' and analyze_mask:
+        analyzing_mask(self.mask_gen, layer_size, mode, iter, iter_interval, text_dir)
+      if mode == 'test' and sample_mask:
+        mask_result = sampling_mask(self.mask_gen, layer_size, model_train, params, sample_num, mode, iter, iter_interval, sample_dir)
+        if mask_result is not None:
+          mask_dict.append(mask_result)
+      if mode == 'test' and draw_loss:
+        plot_loss(model_cls=model_cls, model=model_train, params=params, input_data=data['in_train'].load(), dataset=data['in_train'], 
+            feature_gen=self.feature_gen, mask_gen=self.mask_gen, step_gen=self.step_gen, scale_way=None, xmin=-2.0, xmax=0.5, num_x=20, mode=mode, iteration=iter, iter_interval=iter_interval, loss_dir=result_dir)
+      ##############################################################
       result_dict.append(loss=loss_detached)
       if not mode == 'train':
         result_dict.append(
