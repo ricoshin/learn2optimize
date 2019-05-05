@@ -9,8 +9,6 @@ import torch.optim as optim
 from models.mnist import MNISTData, MNISTModel
 from models.model_helpers import ParamsIndexTracker
 from models.quadratic import QuadraticData, QuadraticModel
-from optimizers import (neural_base, neural_estim, neural_estim_sgd,
-                        neural_obsrv, neural_sparse, neural_sparse_mask)
 from tensorboardX import SummaryWriter
 from torch.optim import SGD, Adam, RMSprop
 from tqdm import tqdm
@@ -63,15 +61,18 @@ def train_neural(
   writer = TFWriter(save_dir, name) if save_dir else None
   # TODO: handle variable arguments according to different neural optimziers
 
-  # meta_optim = torch.optim.SGD(
-    # optimizer.parameters(), lr=0.2, momentum=0.9, weight_decay=1e-6)
-  meta_optim = torch.optim.Adam(
-    optimizer.parameters(), lr=0.01, weight_decay=1e-5)
+  """meta-optimizer"""
+  meta_optim = 'SGD'
+  # meta_optim = 'Adam'
+  wd = 1e-5
+  print(f'meta optimizer: {meta_optim} / lr: {lr} / wd: {wd}')
+  meta_optim = getattr(torch.optim, meta_optim)
+  meta_optim = meta_optim(optimizer.parameters(), lr=lr, weight_decay=wd)
+
   # scheduler = torch.optim.lr_scheduler.MultiStepLR(
   #   meta_optim, milestones=[1, 2, 3, 4], gamma=0.1)
-  scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-    meta_optim, mode='min', factor=0.5, patience=0, cooldown=0, verbose=1)
-  print(f'lr: {lr}')
+  # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+  #   meta_optim, mode='min', factor=0.5, patience=0, cooldown=0, verbose=1)
 
   # step_lr = 1e-2
   # mask_lr = 1e-2
@@ -86,6 +87,7 @@ def train_neural(
   # ])
 
   # print(f'step_lr: {step_lr} / mask_lr: {mask_lr}')
+
   data = data_cls()
   best_params = None
   best_valid = 999999

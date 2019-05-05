@@ -1,3 +1,5 @@
+"""Multiple mask: previous version (back up)"""
+
 import math
 
 import numpy as np

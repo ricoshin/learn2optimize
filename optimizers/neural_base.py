@@ -1,20 +1,31 @@
+"""Learning to learn by gradient descent by gradient descent.
+  Andrychowicz et al.
+  + GRU cell (optional)
+  + inner validation(test) training
+
+"""
+import pdb
+
 import numpy as np
 import torch
 import torch.nn as nn
 from models.model_helpers import ParamsIndexTracker
+from optimize import log_pbar, log_tf_event
 from optimizers.optim_helpers import (BatchManagerArgument, DefaultIndexer,
                                       GradientPreprocessor, LSTMStates,
-                                      OptimizerBatchManager, OptimizerParams,
-                                      OptimizerStates, StatesSlicingWrapper)
+                                      OptimizerBase, OptimizerBatchManager,
+                                      OptimizerParams, OptimizerStates,
+                                      StatesSlicingWrapper, OptimizerBase)
 from tqdm import tqdm
 from utils import utils
 from utils.result import ResultDict
+from utils.timer import Walltime, WalltimeChecker
 from utils.torchviz import make_dot
 
 C = utils.getCudaManager('default')
 
 
-class Optimizer(nn.Module):
+class Optimizer(OptimizerBase):
   def __init__(self, preproc=True, hidden_sz=20, preproc_factor=10.0,
                rnn_cell='lstm'):
     super().__init__()
@@ -48,98 +59,92 @@ class Optimizer(nn.Module):
       raise RuntimeError(f'Unknown rnn_cell type: {self.rnn_cell}')
     return self.output(out), OptimizerStates([s_0, s_1])
 
-  @property
-  def params(self):
-    return OptimizerParams.from_optimizer(self)
-
-  @params.setter
-  def params(self, optimizer_params):
-    optimizer_params.to_optimizer(self)
-
   def meta_optimize(self, meta_optimizer, data, model_cls, optim_it, unroll,
-                    out_mul, mode):
+                    out_mul, writer, mode='train'):
     assert mode in ['train', 'valid', 'test']
-    if mode == 'train':
-      self.train()
-      inner_data = data.loaders['inner_train']
-      outer_data = data.loaders['inner_valid']
-    elif mode == 'valid':
-      self.eval()
-      inner_data = data.loaders['valid']
-      outer_data = None
-    elif mode == 'test':
-      self.eval()
-      inner_data = data.loaders['test']
-      outer_data = None
+    self.set_mode(mode)
+    use_indexer = False
 
-    model = C(model_cls())
-    optimizer_states = C(OptimizerStates.initial_zeros(
-        size=(self.n_layers, len(model.params), self.hidden_sz),
+    params = C(model_cls()).params
+    states = C(OptimizerStates.initial_zeros(
+        size=(self.n_layers, len(params), self.hidden_sz),
         rnn_cell=self.rnn_cell))
 
     result_dict = ResultDict()
     unroll_losses = 0
-    walltime = 0
-    update = C(torch.zeros(model.params.size().flat()))
+    walltime = Walltime()
+    update = C(torch.zeros(params.size().flat()))
 
-    batch_arg = BatchManagerArgument(
-        params=model.params,
-        states=StatesSlicingWrapper(optimizer_states),
-        updates=update,
-    )
+    if use_indexer:
+      batch_arg = BatchManagerArgument(
+          params=params,
+          states=StatesSlicingWrapper(states),
+          updates=update,
+      )
 
-    iter_pbar = tqdm(range(1, optim_it + 1), 'optim_iteration')
-    iter_watch = utils.StopWatch('optim_iteration')
-    for iteration in iter_pbar:
-      iter_watch.touch()
-      if mode == 'train':
-        model = C(model_cls(params=batch_arg.params))
-        loss = model(*outer_data.load())
-        unroll_losses += loss
+    iter_pbar = tqdm(range(1, optim_it + 1), 'Inner_loop')
+    for iter in iter_pbar:
 
-      model_detached = C(model_cls(params=batch_arg.params.detach()))
-      loss_detached = model_detached(*inner_data.load())
-      # if mode == 'train':
-      #   assert loss == loss_detached
-      loss_detached.backward()
-      assert model_detached.params.flat.grad is not None
-      grad = model_detached.params.flat.grad
-      batch_arg.update(BatchManagerArgument(grad=grad).immutable().volatile())
-      iter_pbar.set_description(f'optim_iteration[loss:{loss_detached}]')
+      with WalltimeChecker(walltime):
+        model_train = C(model_cls(params=params.detach()))
+        train_nll = model_train(*data['in_train'].load())
+        train_nll.backward()
+        assert model_train.params.flat.grad is not None
+        p = model_train.params.flat
+        g = model_train.params.flat.grad
 
-      ##########################################################################
-      indexer = DefaultIndexer(input=grad, shuffle=False)
-      batch_manager = OptimizerBatchManager(
-          batch_arg=batch_arg, indexer=indexer)
+        if use_indexer:
+          # This indexer was originally for outer-level batch split
+          #  in case that the whold parameters do not fit in the VRAM.
+          # Which is not good, unless unavoidable, since you cannot avoid
+          #  additional time cost induced by the serial computation.
+          batch_arg.update(BatchManagerArgument(
+              grad=g).immutable().volatile())
+          indexer = DefaultIndexer(input=g, shuffle=False)
+          batch_manager = OptimizerBatchManager(
+              batch_arg=batch_arg, indexer=indexer)
+          ######################################################################
+          for get, set in batch_manager.iterator():
+            updates, new_states = self(get.grad().detach(), get.states())
+            set.states(new_states)
+            set.params(get.params() + updates * out_mul)
+            if not mode == 'train':
+              set.updates(updates)
+          ######################################################################
+          batch_arg = batch_manager.batch_arg_to_set
+          params = batch_arg.params
+        else:
+          updates, states = self(g.detach(), states)
+          updates = params.new_from_flat(updates)
+          params = params + updates * out_mul
 
-      for get, set in batch_manager.iterator():
-        updates, new_states = self(get.grad().detach(), get.states())
-        set.states(new_states)
-        set.params(get.params() + updates * out_mul)
-        if not mode == 'train':
-          set.updates(updates)
-      ##########################################################################
-      batch_arg = batch_manager.batch_arg_to_set
-      # import pdb; pdb.set_trace()
-      if mode == 'train' and iteration % unroll == 0:
-        meta_optimizer.zero_grad()
-        unroll_losses.backward()
-        nn.utils.clip_grad_value_(self.parameters(), 0.1)
-        meta_optimizer.step()
-        unroll_losses = 0
+      with WalltimeChecker(walltime if mode == 'train' else None):
+        model_test = C(model_cls(params=params))
+        test_nll = model_test(*data['in_test'].load())
+        if mode == 'train':
+          unroll_losses += test_nll
+          if iter % unroll == 0:
+            meta_optimizer.zero_grad()
+            unroll_losses.backward()
+            nn.utils.clip_grad_value_(self.parameters(), 0.01)
+            meta_optimizer.step()
+            unroll_losses = 0
 
-      if not mode == 'train' or iteration % unroll == 0:
-        batch_arg.detach_()
+      with WalltimeChecker(walltime):
+        if not mode == 'train' or iter % unroll == 0:
+          if use_indexer:
+            batch_arg.detach_()
+          else:
+            params.detach_()
+            states.detach_()
         # model.params = model.params.detach()
-        # optimizer_states = optimizer_states.detach()
-      walltime += iter_watch.touch('interval')
-      result_dict.append(loss=loss_detached)
-      if not mode == 'train':
-        result_dict.append(
-            walltime=walltime,
-            **self.params_tracker(
-                grad=grad,
-                update=batch_arg.updates,
-            )
-        )
+        # states = states.detach()
+      result = dict(
+        train_nll=train_nll.tolist(),
+        test_nll=test_nll.tolist(),
+        walltime=walltime.time,
+      )
+      result_dict.append(result)
+      log_pbar(result, iter_pbar)
+
     return result_dict

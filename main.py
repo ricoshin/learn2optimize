@@ -76,6 +76,7 @@ def main():
     else:
       print(f"\n\n\nTraining neural optimizer: {name}")
       kwargs = neural_optimizers[name]['train_args']
+      print(f"Module name: {kwargs['optim_module']}")
       params[name] = train_neural(name, save_dir, **problem, **kwargs)
   ##############################################################################
   print('\n\n\nMeta-testing..')
@@ -93,6 +94,7 @@ def main():
         results[name] = result
       elif name in neural_optimizers:
         print(f'\n\nOptimizing with learned optimizer: {name}')
+        print(f"Module name: {kwargs['optim_module']}")
         kwargs = neural_optimizers[name]['test_args']
         result = test_neural(name, save_dir, params[name], **problem, **kwargs)
         results[name] = result

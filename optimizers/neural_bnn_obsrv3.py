@@ -15,7 +15,8 @@ from nn.rnn_base import RNNBase
 from optimize import log_pbar, log_tf_event
 from optimizers.optim_helpers import (BatchManagerArgument, DefaultIndexer,
                                       OptimizerBatchManager, OptimizerParams,
-                                      OptimizerStates, StatesSlicingWrapper)
+                                      OptimizerStates, StatesSlicingWrapper,
+                                      OptimizerBase)
 from tqdm import tqdm
 from utils import utils
 from utils.eval import (eval_gauss_var, eval_lipschitz, inversed_masked_params,
@@ -29,7 +30,7 @@ sigint = utils.getSignalCatcher('SIGINT')
 sigstp = utils.getSignalCatcher('SIGTSTP')
 
 
-class Optimizer(nn.Module):
+class Optimizer(OptimizerBase):
   def __init__(self, hidden_sz=32, sb_mode='unified'):
     super().__init__()
     assert sb_mode in ['none', 'normal', 'unified']
@@ -40,27 +41,10 @@ class Optimizer(nn.Module):
     self.mask_gen = MaskGenerator(hidden_sz)
     self.params_tracker = ParamsIndexTracker(n_tracks=10)
 
-  @property
-  def params(self):
-    return OptimizerParams.from_optimizer(self)
-
-  @params.setter
-  def params(self, optimizer_params):
-    optimizer_params.to_optimizer(self)
-
-  def set_mode(self, mode):
-    assert mode in ['train', 'valid', 'test']
-    if mode == 'train':
-      self.train()
-    else:
-      self.eval()
-
   def meta_optimize(self, meta_optimizer, data, model_cls, optim_it, unroll,
                     out_mul, writer, mode='train'):
     assert mode in ['train', 'valid', 'test']
-
-
-
+    self.set_mode(mode)
 
     lipschitz = False
     if lipschitz:
@@ -198,9 +182,8 @@ class Optimizer(nn.Module):
         total_test = test_nll + test_kld
 
         if mode == 'train':
-          if not iter % unroll == 0:
-            unroll_losses += total_test
-          else:
+          unroll_losses += total_test
+          if iter % unroll == 0:
             meta_optimizer.zero_grad()
             unroll_losses.backward()
             nn.utils.clip_grad_value_(self.parameters(), 0.01)
@@ -209,8 +192,6 @@ class Optimizer(nn.Module):
 
       with WalltimeChecker(walltime):
         if not mode == 'train' or iter % unroll == 0:
-          # self.mask_gen.detach_lambdas_()
-          self.step_gen.lr = self.step_gen.log_lr.detach()
           params = params.detach_()
 
       # import pdb; pdb.set_trace()
@@ -222,7 +203,6 @@ class Optimizer(nn.Module):
           walltime=walltime.time,
           **sparse_r,
       )
-
       result_dict.append(result)
       log_pbar(result, iter_pbar)
 
@@ -257,6 +237,4 @@ class Optimizer(nn.Module):
         log_tf_event(lips_i, writer_inv, iter, 'lipschitz constant')
         log_tf_event(lips_d, writer_dense, iter, 'lipschitz constant')
 
-      # desc = [f'{k}: {v:5.5}' for k, v in result.items()]
-      # iter_pbar.set_description(f"inner_loop [ {' / '.join(desc)} ]")
     return result_dict

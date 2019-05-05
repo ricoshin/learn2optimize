@@ -11,6 +11,29 @@ from utils import utils
 C = utils.getCudaManager('default')
 
 
+class OptimizerBase(nn.Module):
+  def __init__(self, *args, **kwargs):
+    super().__init__()
+
+  @property
+  def params(self):
+    return OptimizerParams.from_optimizer(self)
+
+  @params.setter
+  def params(self, optimizer_params):
+    optimizer_params.to_optimizer(self)
+
+  def set_mode(self, mode):
+    assert mode in ['train', 'valid', 'test']
+    if mode == 'train':
+      self.train()
+    else:
+      self.eval()
+
+  def meta_optimize(self, *args, **kwargs):
+    raise NotImplementedError
+
+
 class GradientPreprocessor(nn.Module):
   def __init__(self, p=10.0, eps=1e-6):
     super(GradientPreprocessor, self).__init__()
