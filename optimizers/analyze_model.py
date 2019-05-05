@@ -251,27 +251,27 @@ def plot_loss(model_cls, model, params, input_data, dataset, feature_gen, mask_g
             for layer in layer_set:
                 scale_X += abs_X.unflat[layer].item()
                 scale_Y += abs_Y.unflat[layer].item()
-                scale_g_s = scale_X/scale_Y
-                scale_s_g = scale_Y/scale_X
-                #import pdb; pdb.set_trace()
-                #step_Y_ = step_Y_ * (step_X_.abs().sum() /  step_Y_.abs().sum())
-                if scale_way == 's':
-                    scale_s = scale_s_g
-                    scale_g = 1.0
-                elif scale_way == 'g':
-                    scale_s = 1.0
-                    scale_g = scale_g_s
-                else:
-                    scale_s = 1.0
-                    scale_g = 1.0       
-                Z_X = get_1D_Loss(X, step_X_, scale_s, step_X.size(), layer_set, dataset, model_cls, params)
-                Z_Y = get_1D_Loss(Y, step_Y_, scale_g, step_Y.size(), layer_set, dataset, model_cls, params)
-                #Z_X2 = get_1D_Loss(X, step_X2_, scale, step_X.size(), layer_set, data['in_train'], model_cls, params)
-                #Z_Y2 = get_1D_Loss(Y, step_Y2_, scale,step_Y.size(), layer_set,data['in_train'], model_cls, params)
-                plot_2d(X, Z_X, os.path.join(result_dir, 'iter_{}_STEPxMASK_1dLoss.png'.format(iteration)))
-                plot_2d(Y, Z_Y, os.path.join(result_dir, 'iter_{}_1.0xGradient_1dLoss.png'.format(iteration)))
-                #plot_2d(Y, Z_X2, os.path.join(result_dir,'iter_{}_10xStepxMASK_1dLoss.png'.format(iteration)))
-                #plot_2d(Y, Z_Y2, os.path.join(result_dir,'iter_{}_0.1xGradient_1dLoss.png'.format(iteration)))
+            scale_g_s = scale_X/scale_Y
+            scale_s_g = scale_Y/scale_X
+            #import pdb; pdb.set_trace()
+            #step_Y_ = step_Y_ * (step_X_.abs().sum() /  step_Y_.abs().sum())
+            if scale_way == 's':
+                scale_s = scale_s_g
+                scale_g = 1.0
+            elif scale_way == 'g':
+                scale_s = 1.0
+                scale_g = scale_g_s
+            else:
+                scale_s = 1.0
+                scale_g = 1.0       
+            Z_X = get_1D_Loss(X, step_X_, scale_s, step_X.size(), layer_set, dataset, model_cls, params)
+            Z_Y = get_1D_Loss(Y, step_Y_, scale_g, step_Y.size(), layer_set, dataset, model_cls, params)
+            #Z_X2 = get_1D_Loss(X, step_X2_, scale, step_X.size(), layer_set, data['in_train'], model_cls, params)
+            #Z_Y2 = get_1D_Loss(Y, step_Y2_, scale,step_Y.size(), layer_set,data['in_train'], model_cls, params)
+            plot_2d(X, Z_X, os.path.join(result_dir, 'iter_{}_STEPxMASK_1dLoss.png'.format(iteration)))
+            plot_2d(Y, Z_Y, os.path.join(result_dir, 'iter_{}_1.0xGradient_1dLoss.png'.format(iteration)))
+            #plot_2d(Y, Z_X2, os.path.join(result_dir,'iter_{}_10xStepxMASK_1dLoss.png'.format(iteration)))
+            #plot_2d(Y, Z_Y2, os.path.join(result_dir,'iter_{}_0.1xGradient_1dLoss.png'.format(iteration)))
     #import pdb; pdb.set_trace()
 
 def get_1D_Loss(X, step_X_, scale, flat_size, layers, dataset, model_cls, params):
