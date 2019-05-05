@@ -56,10 +56,9 @@ class Optimizer(OptimizerBase):
     iter_pbar = tqdm(range(1, optim_it + 1), 'Inner_loop')
     ################
     mask_dict = ResultDict()
-    analyze_mask = True
-    sample_mask = True
-    topk = True
-    draw_loss = True
+    analyze_mask = False
+    sample_mask = False
+    draw_loss = False
     ################
     do_masking = True
     sparse_r = {}  # sparsity
@@ -122,13 +121,13 @@ class Optimizer(OptimizerBase):
       sample_dir = 'test/mask_compare'
       iter_interval = 10
       sample_num = 10000
-      if analyze_mask:
+      if mode == 'test' and analyze_mask:
         analyzing_mask(self.mask_gen, layer_size, mode, iter, iter_interval, text_dir)
-      if sample_mask:
+      if mode == 'test' and sample_mask:
         mask_result = sampling_mask(self.mask_gen, layer_size, model_train, params, sample_num, mode, iter, iter_interval, sample_dir)
         if mask_result is not None:
           mask_dict.append(mask_result)
-      if draw_loss:
+      if mode == 'test' and draw_loss:
         plot_loss(model_cls=model_cls, model=model_train, params=params, input_data=data['in_train'].load(), dataset=data['in_train'], 
             feature_gen=self.feature_gen, mask_gen=self.mask_gen, step_gen=self.step_gen, scale_way=None, xmin=-2.0, xmax=0.5, num_x=20, mode=mode, iteration=iter, iter_interval=iter_interval, loss_dir=result_dir)
       ##############################################################
