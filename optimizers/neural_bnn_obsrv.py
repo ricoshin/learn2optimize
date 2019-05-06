@@ -1,4 +1,4 @@
-"""Single mask"""
+"""Single mask (Masking part can be ablated)"""
 
 import math
 import pdb
@@ -21,9 +21,7 @@ from utils import utils
 from utils.result import ResultDict
 from utils.timer import Walltime, WalltimeChecker
 from utils.torchviz import make_dot
-###
-from optimizers.analyze_model import *
-###
+
 C = utils.getCudaManager('default')
 sigint = utils.getSignalCatcher('SIGINT')
 sigstp = utils.getSignalCatcher('SIGTSTP')
@@ -45,8 +43,13 @@ class Optimizer(OptimizerBase):
     assert mode in ['train', 'valid', 'test']
     self.set_mode(mode)
 
+    ############################################################################
     do_masking = True
-    # print(f'mask on: {do_masking}')
+    analyze_mask = False
+    sample_mask = False
+    draw_loss = False
+    mask_dict = ResultDict()
+    ############################################################################
 
     result_dict = ResultDict()
     unroll_losses = 0
@@ -110,22 +113,14 @@ class Optimizer(OptimizerBase):
       with WalltimeChecker(walltime):
         if not mode == 'train' or iter % unroll == 0:
           params = params.detach_()
-      ##############################################################
-      text_dir = 'test/analyze_mask'
-      result_dir = 'test/drawloss'
-      sample_dir = 'test/mask_compare'
-      iter_interval = 10
-      sample_num = 10000
-      if mode == 'test' and analyze_mask:
-        analyzing_mask(self.mask_gen, layer_size, mode, iter, iter_interval, text_dir)
-      if mode == 'test' and sample_mask:
-        mask_result = sampling_mask(self.mask_gen, layer_size, model_train, params, sample_num, mode, iter, iter_interval, sample_dir)
-        if mask_result is not None:
-          mask_dict.append(mask_result)
-      if mode == 'test' and draw_loss:
-        plot_loss(model_cls=model_cls, model=model_train, params=params, input_data=data['in_train'].load(), dataset=data['in_train'],
-            feature_gen=self.feature_gen, mask_gen=self.mask_gen, step_gen=self.step_gen, scale_way=None, xmin=-2.0, xmax=0.5, num_x=20, mode=mode, iteration=iter, iter_interval=iter_interval, loss_dir=result_dir)
-      ##############################################################
+
+      ##########################################################################
+      utils.analyzers.model_analyzer(
+        self, mode, model_train, params, model_cls, data, iter, analyze_mask,
+        sample_mask, draw_loss)
+      # utils.analyzers.surface_analyzer()
+      ##########################################################################
+
       # result dict
       result = dict(
           train_nll=train_nll.tolist(),
@@ -138,6 +133,5 @@ class Optimizer(OptimizerBase):
       )
       result_dict.append(result)
       log_pbar(result, iter_pbar)
-    if sample_mask:
-      plot_mask_result(mask_dict, sample_dir)
+
     return result_dict, params
