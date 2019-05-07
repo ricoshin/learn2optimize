@@ -17,12 +17,12 @@ _problems = {
 
 _neural_optimizers_debug = odict({
     'RNN-base': {
-        'train_args': odict(n_epoch=3, n_train=5, n_valid=5, optim_it=100,
-                            unroll=20, lr=0.005), # 0.001
+        'train_args': odict(n_epoch=1, n_train=3, n_valid=3, iter_train=5,
+                            iter_valid=5, unroll=20, lr=0.01),
     },
     'Proposed': {
-        'train_args': odict(n_epoch=10, n_train=5, n_valid=1, optim_it=100,
-                            unroll=20, lr=0.009), # 0.003
+        'train_args': odict(n_epoch=1, n_train=3, n_valid=3, iter_train=5,
+                            iter_valid=5, unroll=20, lr=0.01),
     },
 })
 
@@ -47,7 +47,7 @@ _neural_optimizers_mnist = odict({
     #     'train_args': odict(n_epoch=1, n_train=3, n_valid=3, iter_train=5,
     #                         iter_valid=5, unroll=20, lr=0.01),
     # },
-    
+
     'Proposed': {
         'train_args': odict(n_epoch=50, n_train=20, n_valid=10, iter_train=500,
                             iter_valid=2500, unroll=20, lr=1.0),

@@ -42,7 +42,7 @@ def model_analyzer(optim, mode, model, params, model_cls, data, iter,
   return
 
 
-def surface_analyzer(params, best_mask, step, set_size, sparse_r, writer, iter):
+def surface_analyzer(params, best_mask, step, writer, iter):
 
   if not iter % 10 == 0:
     return
@@ -56,14 +56,12 @@ def surface_analyzer(params, best_mask, step, set_size, sparse_r, writer, iter):
   sparsity = best_mask.sparsity(0.5)
   set_size = best_mask.tsize(0)  # NOTE: fix it at deeper level
 
-  params_pruned_inv = inversed_masked_params(
-      params, best_mask, step, set_size, sparse_r)
-  params_pruned_rand = random_masked_params(
-      params, step, set_size, sparse_r)
+  params_pruned_inv = inversed_masked_params(params, best_mask, step, sparsity)
+  params_pruned_rand = random_masked_params(params, best_mask, step, sparsity)
 
   for k, v in set_size.items():
     n = k.split('_')[1]
-    r = sparse_r[f"sparse_{n}"]
+    r = sparsity[f"sp_{n}"]
     lips_best[f"lips_{n}"] = eval_lipschitz(best_pruned, n).tolist()[0]
     lips_any[f"lips_{n}"] = eval_lipschitz(params_pruned, n).tolist()[0]
     lips_rand[f"lips_{n}"] = eval_lipschitz(params_pruned_rand, n).tolist()[0]

@@ -309,7 +309,6 @@ class ParamsFlattener(object):
     assert (dim is not None) == (new_size is not None)
     import pdb; pdb.set_trace()
 
-
   def size(self):
     return ParamsSize(self._shapes, self._is_flat)
 
@@ -412,9 +411,6 @@ class ParamsFlattener(object):
   def copy(self):
     return copy.deepcopy(self)
 
-  # def expand_as(self, other):
-    # return self.cond_expand_as(other, key_trans_func=lambda x: x)
-
   def _default_key_trans_func(self, key):
     # mat_0  ->  linear_0  (params ->  mask)
     prefix, i = key.split('_')
@@ -423,6 +419,153 @@ class ParamsFlattener(object):
     #   return '_'.join(['layer', i])
     # else:
     #   return None
+
+  def apply_func_(self, func, other, *args, **kwargs):
+    assert isinstance(other, (ParamsFlattener, dict))
+    if isinstance(other, ParamsFlattener):
+      other = other.unflat # as dict
+    was_flat = self._flat
+    self._maybe_unflat()
+    out_dict = func(other, *args, **kwargs)
+    if was_flat:
+      self._maybe_flat()
+    return ParamsFlattener(out_dict)
+
+  def __neg__(self):
+    return self.mul(-1)
+
+  def __add__(self, other):
+    return self.add(other)
+
+  def __sub__(self, other):
+    return self.add(-other)
+
+  def __mul__(self, other):
+    return self.mul(other)
+
+  def __truediv__(self, other):
+    return self.div(other)
+
+  def __gt__(self, other):
+    return self.apply_op_with_other('gt', other)
+
+  def __lt__(self, other):
+    return self.apply_op_with_other('lt', other)
+
+  def __ge__(self, other):
+    return self.apply_op_with_other('ge', other)
+
+  def __le__(self, other):
+    return self.apply_op_with_other('le', other)
+
+  def __eq__(self, other):
+    return self.apply_op_with_other('eq', other)
+
+  def add(self, other):
+    return self.apply_op_with_other('add', other)
+
+  def mul(self, other):
+    return self.apply_op_with_other('mul', other)
+
+  def div(self, other):
+    return self.apply_op_with_other('div', other)
+
+  def abs(self, *args, **kwargs):
+    func = lambda t: torch.abs(t, *args, **kwargs)
+    return self.apply_func(func, inplace=False)
+
+  def mean(self, *args, **kwargs):
+    func = lambda t: torch.mean(t, *args, **kwargs)
+    return self.apply_func(func, inplace=False)
+
+  def std(self, *args, **kwargs):
+    func = lambda t: torch.std(t, *args, **kwargs)
+    return self.apply_func(func, inplace=False)
+
+  def to(self, *args, **kwargs):
+    func = lambda t: getattr(t, 'to')(*args, **kwargs)
+    return self.apply_func(func, inplace=False)
+
+  def float(self):
+    return self.to(torch.float32)
+
+  def long(self):
+    return self.to(torch.int64)
+
+  def byte(self):
+    return self.to(torch.unit8)
+
+  def sum(self, *args, **kwargs):
+    func = lambda t: torch.sum(t, *args, **kwargs)
+    return self.apply_func(func, inplace=False)
+
+  def topk_id(self, other, *args, **kwargs):
+    func = lambda inp, k: torch.topk(inp, k, *args, **kwargs)[1]
+    return self.apply_func(func, other, inplace=False)
+
+  def tsize(self, *args, **kwargs):
+    func = lambda t: t.size(*args, **kwargs)
+    return self.apply_func(func, inplace=False, as_dict=True)
+
+  def sparsity(self, threshold=0.5, new_prefix='sp', as_dict=True):
+    sparsity = (self > threshold).sum().float() / self.tsize(0)
+    convert_key = lambda k: new_prefix + k.split('_')[1]
+    sparsity = sparsity.apply_func_to_keys(convert_key)
+    if as_dict:
+      return sparsity.unflat
+    else:
+      return sparsity
+
+  def scatter_float_(self, dim, index, float_):
+    func = lambda inp, id: inp.scatter_(dim, id, float_)
+    return self.apply_func(func, index, inplace=False)
+
+  def apply_op_with_other(self, op_name, other):
+    assert isinstance(other, (ParamsFlattener, dict, int, float, torch.Tensor))
+    if isinstance(other, (int, float, torch.Tensor)):
+      other_as_dict = {}
+      for k, v in self.unflat.items():
+        other_as_dict[k] = other
+    elif isinstance(other, ParamsFlattener):
+      other_as_dict = other.unflat
+    elif isinstance(other, dict):
+      other_as_dict = other
+    else:
+      raise Exception(f'Unsupported type for other argument: {type(other)}')
+    func = lambda t1, t2: getattr(torch, op_name)(t1, t2)
+    return self.apply_func(func, other_as_dict, inplace=False)
+
+  def apply_func_to_keys(self, func):
+    assert callable(func)
+    return ParamsFlattener({func(k): v for k, v in self.unflat.items()})
+
+  def apply_func(self, func, other=None, inplace=False, as_dict=False):
+    if other is not None:
+      assert isinstance(other, (ParamsFlattener, dict))
+      if isinstance(other, ParamsFlattener):
+        other = other.unflat # as dict
+      assert self.unflat.keys() == other.keys()
+
+    if not inplace:
+      out_dict = {}
+    for k, v in self.unflat.items():
+      if other is None:
+        if inplace:
+          self.unflat[k] = func(v)
+        else:
+          out_dict[k] = func(v)
+      else:
+        if inplace:
+          self.unflat[k] = func(v, other[k])
+        else:
+          out_dict[k] = func(v, other[k])
+    if inplace:
+      return None
+    else:
+      if as_dict:
+        return out_dict
+      else:
+        return ParamsFlattener(out_dict)
 
   def expand_as(self, other, key_trans_func=None):
     if key_trans_func is None:
@@ -523,198 +666,6 @@ class ParamsFlattener(object):
       return out
 
     return self.apply_func_(func, mask)
-
-  def apply_func_(self, func, other, *args, **kwargs):
-    assert isinstance(other, (ParamsFlattener, dict))
-    if isinstance(other, ParamsFlattener):
-      other = other.unflat # as dict
-    was_flat = self._flat
-    self._maybe_unflat()
-    out_dict = func(other, *args, **kwargs)
-    if was_flat:
-      self._maybe_flat()
-    return ParamsFlattener(out_dict)
-
-  def __neg__(self):
-    return self.mul(-1)
-
-  def __add__(self, other):
-    return self.add(other)
-
-  def __sub__(self, other):
-    return self.add(-other)
-
-  def __mul__(self, other):
-    return self.mul(other)
-
-  def __truediv__(self, other):
-    return self.div(other)
-
-  def __gt__(self, other):
-    return self.apply_op_with_other('gt', other)
-
-  def __lt__(self, other):
-    return self.apply_op_with_other('lt', other)
-
-  def __ge__(self, other):
-    return self.apply_op_with_other('ge', other)
-
-  def __le__(self, other):
-    return self.apply_op_with_other('le', other)
-
-  def __eq__(self, other):
-    return self.apply_op_with_other('eq', other)
-
-  def add(self, other):
-    return self.apply_op_with_other('add', other)
-
-  def mul(self, other):
-    return self.apply_op_with_other('mul', other)
-
-  def div(self, other):
-    return self.apply_op_with_other('div', other)
-
-  def abs(self, *args, **kwargs):
-    func = lambda t: torch.abs(t, *args, **kwargs)
-    return self.apply_func(func, inplace=False)
-
-  def mean(self, *args, **kwargs):
-    func = lambda t: torch.mean(t, *args, **kwargs)
-    return self.apply_func(func, inplace=False)
-
-  def std(self, *args, **kwargs):
-    func = lambda t: torch.std(t, *args, **kwargs)
-    return self.apply_func(func, inplace=False)
-
-  def to(self, *args, **kwargs):
-    func = lambda t: getattr(t, 'to')(*args, **kwargs)
-    return self.apply_func(func, inplace=False)
-
-  def float(self):
-    return self.to(torch.float32)
-
-  def long(self):
-    return self.to(torch.int64)
-
-  def byte(self):
-    return self.to(torch.unit8)
-
-  def sum(self, *args, **kwargs):
-    func = lambda t: torch.sum(t, *args, **kwargs)
-    return self.apply_func(func, inplace=False)
-
-  def topk_id(self, other, *args, **kwargs):
-    func = lambda inp, k: torch.topk(inp, k, *args, **kwargs)[1]
-    return self.apply_func(func, other, inplace=False)
-
-  def tsize(self, *args, **kwargs):
-    func = lambda t: t.size(*args, **kwargs)
-    return self.apply_func(func, inplace=False, as_dict=True)
-
-  def sparsity(self, threshold, new_prefix='sp'):
-    sparsity = (self > threshold).sum().float() / self.tsize(0)
-    convert_key = lambda k: new_prefix + k.split('_')[1]
-    return sparsity.apply_func_to_keys(convert_key)
-
-  def scatter_float_(self, dim, index, float_):
-    func = lambda inp, id: inp.scatter_(dim, id, float_)
-    return self.apply_func(func, index, inplace=False)
-
-  # def mean_
-  #
-  # def translate_keys(self, other):
-  #   def key_trans_func(key):
-  #     prefix, i = key.split('_')
-  #     if prefix in ['mat']:
-  #       return '_'.join(['layer', i])
-  #     else:
-  #       return None
-  #   return self.translate_keys_with_func(other, key_trans_func=key_trans_func)
-  #
-  # def translate_keys_with_func(self, other, key_trans_func):
-  #   """To expand unflattend tensors(dict) as the ones of the other
-  #   ParamsFlattener complying with matching rule, which can be specified by
-  #   either key_trans_func or match_prefix argument, but not both.
-  #     key_trans_func: tran
-  #   """
-  #   assert isinstance(other, (ParamsFlattener, dict))
-  #   assert callable(key_trans_func)
-  #
-  #   if isinstance(other, ParamsFlattener):
-  #     other = other.unflat # as dict
-  #   # was_flat = self._flat
-  #   # self._maybe_unflat()
-  #   out_dict = {}
-  #   for k_other, v_other in other.items():
-  #     k_self = key_trans_func(k_other) #mat_0  ->  linear_0  (params ->  mask)
-  #     if k_self: # mat (copy the mask pattern along the column axis)
-  #       out_dict[k_other] = self.unflat[k_self].squeeze(0).expand_as(v_other)
-  #     else: # bias (no need to drop - fill ones)
-  #       out_dict[k_other] = v_other.new_ones(v_other.size())
-  #   if was_flat:
-  #     self._maybe_flat()
-  #   return ParamsFlattener(out_dict)
-  #
-  # def expand_as(self, other, key_trans_func=None):
-  #   def func(other):
-  #     out_dict = {}
-  #     for k_other, v_other in other.items():
-  #       k_self = key_trans_func(k_other) #mat_0  ->  linear_0  (params ->  mask)
-  #       if k_self: # mat (copy the mask pattern along the column axis)
-  #         out_dict[k_other] = self.unflat[k_self].squeeze(0).expand_as(v_other)
-  #       else: # bias (no need to drop - fill ones)
-  #         out_dict[k_other] = v_other.new_ones(v_other.size())
-  #     return
-  #
-
-
-
-  def apply_op_with_other(self, op_name, other):
-    assert isinstance(other, (ParamsFlattener, dict, int, float, torch.Tensor))
-    if isinstance(other, (int, float, torch.Tensor)):
-      other_as_dict = {}
-      for k, v in self.unflat.items():
-        other_as_dict[k] = other
-    elif isinstance(other, ParamsFlattener):
-      other_as_dict = other.unflat
-    elif isinstance(other, dict):
-      other_as_dict = other
-    else:
-      raise Exception(f'Unsupported type for other argument: {type(other)}')
-    func = lambda t1, t2: getattr(torch, op_name)(t1, t2)
-    return self.apply_func(func, other_as_dict, inplace=False)
-
-  def apply_func_to_keys(self, func):
-    assert callable(func)
-    return ParamsFlattener({func(k): v for k, v in self.unflat.items()})
-
-  def apply_func(self, func, other=None, inplace=False, as_dict=False):
-    if other is not None:
-      assert isinstance(other, (ParamsFlattener, dict))
-      if isinstance(other, ParamsFlattener):
-        other = other.unflat # as dict
-      assert self.unflat.keys() == other.keys()
-
-    if not inplace:
-      out_dict = {}
-    for k, v in self.unflat.items():
-      if other is None:
-        if inplace:
-          self.unflat[k] = func(v)
-        else:
-          out_dict[k] = func(v)
-      else:
-        if inplace:
-          self.unflat[k] = func(v, other[k])
-        else:
-          out_dict[k] = func(v, other[k])
-    if inplace:
-      return None
-    else:
-      if as_dict:
-        return out_dict
-      else:
-        return ParamsFlattener(out_dict)
 
   def register_grad_cut_hook_(self):
     if self._grad_cut_hook_handle is not None:

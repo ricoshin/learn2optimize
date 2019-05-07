@@ -145,7 +145,6 @@ class Optimizer(OptimizerBase):
 
       ##########################################################################
       """Analyzers"""
-      sparsity = best_mask.sparsity(0.5)
       if analyze_model:
         utils.analyzers.model_analyzer(
           self, mode, model_train, params, model_cls, data, iter, analyze_mask,
@@ -162,7 +161,7 @@ class Optimizer(OptimizerBase):
           test_acc=test_acc.tolist(),
           test_kld=test_kld.tolist(),
           walltime=walltime.time,
-          **sparsity.unflat,
+          **best_mask.sparsity(0.5),
       )
       result_dict.append(result)
       log_pbar(result, iter_pbar)

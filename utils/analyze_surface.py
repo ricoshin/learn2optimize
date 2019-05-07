@@ -27,12 +27,12 @@ def eval_gauss_var(model_cls, data, params, n_sample=200, std=1e-4):
     losses.append(model(*data['in_train'].load()))
   return torch.stack(losses).var()
 
-def inversed_masked_params(params, mask, step, step_size, r, thres=0.5):
+def inversed_masked_params(params, mask, step, r, thres=0.5):
   inv_mask = {k: (m < thres) for k, m in mask.unflat.items()}
   # import pdb; pdb.set_trace()
   num_ones = {k: v.sum() for k, v in inv_mask.items()}
   for k, v in inv_mask.items():
-    diff = num_ones[k] - step_size[k] * r[f"sparse_{k.split('_')[1]}"]
+    diff = num_ones[k] - mask.t_size(0)[k] * r[f"sparse_{k.split('_')[1]}"]
     if diff >= 0:
       m = inv_mask[k]
       nonzero_ids = m.nonzero().squeeze().tolist()
@@ -52,13 +52,13 @@ def inversed_masked_params(params, mask, step, step_size, r, thres=0.5):
   return params_pruned, params_sparse
 
 
-def random_masked_params(params, step, set_size, r, thres=0.5):
+def random_masked_params(params, mask, step, r, thres=0.5):
   assert isinstance(params, ParamsFlattener)
   # assert all([isinstance(arg, ParamsFlattener) for arg in (params, mask)])
   params = params.detach()
   step = step.detach()
   r = {'layer_' + k.split('_')[1]: v for k, v in r.items()}
-  mask_rand = manual_mask_gen.randk(set_size=set_size, topk=r)
+  mask_rand = manual_mask_gen.randk(set_size=mask.tsize(0), topk=r)
   mask_layout = mask_rand.expand_as(params)
   step_sparse = step * mask_layout
   params_sparse = params + step_sparse
