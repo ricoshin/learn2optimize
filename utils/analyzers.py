@@ -1,3 +1,4 @@
+from optimize import log_pbar, log_tf_event
 from utils.analyze_model import analyzing_mask, plot_loss, sampling_mask
 from utils.analyze_surface import (eval_gauss_var, eval_lipschitz,
                                    inversed_masked_params,
@@ -6,7 +7,7 @@ from utils.result import ResultDict
 
 
 def model_analyzer(optim, mode, model, params, model_cls, data, iter,
-                   analyze_mask, sample_mask, draw_loss):
+                   analyze_mask=False, sample_mask=False, draw_loss=False):
 
   text_dir = 'test/analyze_mask'
   result_dir = 'test/drawloss'
@@ -42,16 +43,23 @@ def model_analyzer(optim, mode, model, params, model_cls, data, iter,
 
 
 def surface_analyzer(params, best_mask, step, set_size, sparse_r, writer, iter):
+
+  if not iter % 10 == 0:
+    return
+
   lips_dense = {}
   lips_any = {}
   lips_best = {}
   lips_rand = {}
   lips_inv = {}
 
+  sparsity = best_mask.sparsity(0.5)
+  set_size = best_mask.tsize(0)  # NOTE: fix it at deeper level
+
   params_pruned_inv = inversed_masked_params(
-    params, best_mask, step, set_size, sparse_r)
+      params, best_mask, step, set_size, sparse_r)
   params_pruned_rand = random_masked_params(
-    params, step, set_size, sparse_r)
+      params, step, set_size, sparse_r)
 
   for k, v in set_size.items():
     n = k.split('_')[1]
@@ -62,9 +70,36 @@ def surface_analyzer(params, best_mask, step, set_size, sparse_r, writer, iter):
     lips_inv[f"lips_{n}"] = eval_lipschitz(params_pruned_inv, n).tolist()[0]
     lips_dense[f"lips_{n}"] = eval_lipschitz(params_sparse, n).tolist()[0]
 
-  log_tf_event(result, 'meta-test', iter)
-  log_tf_event(lips_b, 'lipschitz constant', iter)
-  log_tf_event(lips_a, 'lipschitz constant', iter)
-  log_tf_event(lips_r, 'lipschitz constant', iter)
-  log_tf_event(lips_i, 'lipschitz constant', iter)
-  log_tf_event(lips_d, 'lipschitz constant', iter)
+    if writer and analyze_surface and iter % 10 == 0:
+      lips_b = dict(
+          lips_t=np.prod([l for l in lips_best.values()]),
+          **lips_best
+      )
+      lips_a = dict(
+          lips_t=np.prod([l for l in lips_any.values()]),
+          **lips_any
+      )
+      lips_r = dict(
+          lips_t=np.prod([l for l in lips_rand.values()]),
+          **lips_rand
+      )
+      lips_i = dict(
+          lips_t=np.prod([l for l in lips_inv.values()]),
+          **lips_inv
+      )
+      lips_d = dict(
+          lips_t=np.prod([l for l in lips_dense.values()]),
+          **lips_dense
+      )
+
+  if writer:
+    log_tf_event(result, tf_writer, iter, 'meta-test/wallclock')
+    log_tf_event(result, tf_writer, iter, 'meta-test/wallclock')
+    log_tf_event(result, 'meta-test', iter)
+    log_tf_event(lips_b, 'lipschitz constant', iter)
+    log_tf_event(lips_a, 'lipschitz constant', iter)
+    log_tf_event(lips_r, 'lipschitz constant', iter)
+    log_tf_event(lips_i, 'lipschitz constant', iter)
+    log_tf_event(lips_d, 'lipschitz constant', iter)
+
+  return

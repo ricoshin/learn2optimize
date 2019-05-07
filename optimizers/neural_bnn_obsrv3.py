@@ -46,10 +46,9 @@ class Optimizer(OptimizerBase):
 
     ############################################################################
     n_samples = 10
+    """MSG: better postfix?"""
+    analyze_model = False
     analyze_surface = False
-    analyze_mask = False
-    sample_mask = False
-    draw_loss = False
     ############################################################################
 
     if analyze_surface:
@@ -111,10 +110,6 @@ class Optimizer(OptimizerBase):
           sparse_model = C(model_cls(params=params_pruned.detach()))
           loss, _ = sparse_model(*data['in_train'].load())
 
-          # if debug_2:
-          #   losses.append(loss.tolist())
-          #   lips.append(eval_analyze_surface(params_pruned, '0').tolist()[0])
-
           try:
             if (loss < best_loss) or i == 0:
               best_loss = loss
@@ -128,41 +123,6 @@ class Optimizer(OptimizerBase):
 
         if best_params is not None:
           params = best_params
-      # walltime += iter_watch.touch('interval')
-
-
-
-
-      # _, best_params = inversed_masked_params(params, best_mask, step, set_size, sparse_r)
-      _, best_params = random_masked_params(params, step, set_size, sparse_r)
-
-      if analyze_surface and iter % 10 == 0:
-
-        params_pruned_inv = inversed_masked_params(
-            params, best_mask, step, set_size, sparse_r)
-        params_pruned_rand = random_masked_params(
-            params, step, set_size, sparse_r)
-
-        step_pruned = step_sparse.prune(mask > 0.5)
-        # for k, v in set_size.items():
-        #   n = k.split('_')[1]
-        #   r = sparse_r[f"sparse_{n}"]
-        #   lips_best[f"lips_{n}"] = eval_analyze_surface(best_pruned, n).tolist()[0]
-        #   lips_any[f"lips_{n}"] = eval_analyze_surface(params_pruned, n).tolist()[0]
-        #   lips_rand[f"lips_{n}"] = eval_analyze_surface(params_pruned_rand, n).tolist()[0]
-        #   lips_inv[f"lips_{n}"] = eval_analyze_surface(params_pruned_inv, n).tolist()[0]
-        #   lips_dense[f"lips_{n}"] = eval_analyze_surface(params_sparse, n).tolist()[0]
-
-        # lips_best[f"var"] = eval_gauss_var(model_cls, data, best_pruned).tolist()
-        # lips_any[f"var"] = eval_gauss_var(model_cls, data, params_pruned).tolist()
-        # lips_rand[f"var"] = eval_gauss_var(model_cls, data, params_pruned_rand).tolist()
-        # lips_inv[f"var"] = eval_gauss_var(model_cls, data, params_pruned_inv).tolist()
-        # lips_dense[f"var"] = eval_gauss_var(model_cls, data, params_sparse).tolist()
-
-        eval_step_direction(model_cls, data, best_params, best_)
-
-        # import pdb; pdb.set_trace()
-        # ppp = eval_analyze_surface(best_params * best_mask.expand_as(best_params), n)
 
       with WalltimeChecker(walltime if mode == 'train' else None):
         model_test = C(model_cls(params=params))
@@ -185,15 +145,14 @@ class Optimizer(OptimizerBase):
 
       ##########################################################################
       """Analyzers"""
-      sparse_r = {}  # sparsity
-      for k, v in set_size.items():
-        r = (best_mask > 0.5).sum().unflat[k].tolist() / v
-        n = k.split('_')[1]
-        sparse_r[f"sp_{n}"] = r
-      utils.analyzers.model_analyzer(
-        self, mode, model_train, params, model_cls, data, iter, analyze_mask,
-        sample_mask, draw_loss)
-      utils.analyzers.surface_analyzer()
+      sparsity = best_mask.sparsity(0.5)
+      if analyze_model:
+        utils.analyzers.model_analyzer(
+          self, mode, model_train, params, model_cls, data, iter, analyze_mask,
+          sample_mask, draw_loss)
+      if analyze_surface:
+        utils.analyzers.surface_analyzer(
+          params, best_mask, step, set_size, sparsity, writer, iter)
       ##########################################################################
 
       result = dict(
@@ -203,41 +162,10 @@ class Optimizer(OptimizerBase):
           test_acc=test_acc.tolist(),
           test_kld=test_kld.tolist(),
           walltime=walltime.time,
-          **sparse_r,
+          **sparsity.unflat,
       )
       result_dict.append(result)
       log_pbar(result, iter_pbar)
 
-      # if writer:
-      #   log_tf_event(result, tf_writer, iter, 'meta-test/wallclock')
-      #   log_tf_event(result, tf_writer, iter, 'meta-test/wallclock')
 
-      if writer and analyze_surface and iter % 10 == 0:
-        lips_b = dict(
-            lips_t=np.prod([l for l in lips_best.values()]),
-            **lips_best
-        )
-        lips_a = dict(
-            lips_t=np.prod([l for l in lips_any.values()]),
-            **lips_any
-        )
-        lips_r = dict(
-            lips_t=np.prod([l for l in lips_rand.values()]),
-            **lips_rand
-        )
-        lips_i = dict(
-            lips_t=np.prod([l for l in lips_inv.values()]),
-            **lips_inv
-        )
-        lips_d = dict(
-            lips_t=np.prod([l for l in lips_dense.values()]),
-            **lips_dense
-        )
-        log_tf_event(lips_b, writer_best, iter, 'analyze_surface constant')
-        log_tf_event(lips_a, writer_any, iter, 'analyze_surface constant')
-        log_tf_event(lips_r, writer_rand, iter, 'analyze_surface constant')
-        log_tf_event(lips_i, writer_inv, iter, 'analyze_surface constant')
-        log_tf_event(lips_d, writer_dense, iter, 'analyze_surface constant')
-    if sample_mask:
-      plot_mask_result(mask_dict, sample_dir)
     return result_dict, params

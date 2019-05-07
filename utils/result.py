@@ -114,6 +114,10 @@ class ResultDict(dict):
   def __repr__(self):
     return f"ResultDict({str(self.keys())})"
 
+  def sub(self, keys):
+    isinstance(keys, (list, tuple))
+    return ResultDict({k: v for k, v in self.items() if k in keys})
+
   def getitem(self, key):
     return ResultDict({k: v[key] for k, v in self.items()})
 
@@ -134,6 +138,10 @@ class ResultDict(dict):
 
   def numpy(self):
     return ResultDict({k: np.array(v) for k, v in self.items()})
+
+  def w_postfix(self, postfix):
+    assert isinstance(postfix, str)
+    return ResultDict({k + '_' + postfix : v for k, v in self.items()})
 
   def mean(self, *args, **kwargs):
     return ResultDict({k: np.array(v).mean(*args, **kwargs)\

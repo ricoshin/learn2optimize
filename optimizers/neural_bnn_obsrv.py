@@ -86,11 +86,6 @@ class Optimizer(OptimizerBase):
           mask = self.mask_gen.sample_mask()
           mask = ParamsFlattener(mask)
           mask_layout = mask.expand_as(params)
-          # NOTE: do this automatically
-          for k, v in layer_size.items():
-            r = (mask > 0.5).sum().unflat[k].tolist() / v
-            sparse_r[f"sp_{k.split('_')[1]}"] = r
-          step = step * mask_layout
 
         # update
         params = params + step
@@ -129,7 +124,7 @@ class Optimizer(OptimizerBase):
           test_acc=test_acc.tolist(),
           test_kld=test_kld.tolist(),
           walltime=walltime.time,
-          **sparse_r,
+          **mask.sparsity(0.5),
       )
       result_dict.append(result)
       log_pbar(result, iter_pbar)

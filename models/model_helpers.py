@@ -160,7 +160,7 @@ class ParamsSize(object):
 
 class ParamsFlattener(object):
   """This class helps to safely retain gradients during indexing from flattened
-  parameters, so that entire optimizee parameters can be conveniently divide
+  parameters, so that entire optimizee parameters can be conveniently divided
   into mini-batches that still preserves 'grad' attribute.
   Detailed control of setting & getting elements of parameters in batchwise
   manner will be delegated to help.OptimizerBatchManager.
@@ -586,6 +586,19 @@ class ParamsFlattener(object):
     func = lambda t: torch.std(t, *args, **kwargs)
     return self.apply_func(func, inplace=False)
 
+  def to(self, *args, **kwargs):
+    func = lambda t: getattr(t, 'to')(*args, **kwargs)
+    return self.apply_func(func, inplace=False)
+
+  def float(self):
+    return self.to(torch.float32)
+
+  def long(self):
+    return self.to(torch.int64)
+
+  def byte(self):
+    return self.to(torch.unit8)
+
   def sum(self, *args, **kwargs):
     func = lambda t: torch.sum(t, *args, **kwargs)
     return self.apply_func(func, inplace=False)
@@ -597,6 +610,11 @@ class ParamsFlattener(object):
   def tsize(self, *args, **kwargs):
     func = lambda t: t.size(*args, **kwargs)
     return self.apply_func(func, inplace=False, as_dict=True)
+
+  def sparsity(self, threshold, new_prefix='sp'):
+    sparsity = (self > threshold).sum().float() / self.tsize(0)
+    convert_key = lambda k: new_prefix + k.split('_')[1]
+    return sparsity.apply_func_to_keys(convert_key)
 
   def scatter_float_(self, dim, index, float_):
     func = lambda inp, id: inp.scatter_(dim, id, float_)
@@ -657,10 +675,18 @@ class ParamsFlattener(object):
       other_as_dict = {}
       for k, v in self.unflat.items():
         other_as_dict[k] = other
-    if isinstance(other, ParamsFlattener):
+    elif isinstance(other, ParamsFlattener):
       other_as_dict = other.unflat
+    elif isinstance(other, dict):
+      other_as_dict = other
+    else:
+      raise Exception(f'Unsupported type for other argument: {type(other)}')
     func = lambda t1, t2: getattr(torch, op_name)(t1, t2)
     return self.apply_func(func, other_as_dict, inplace=False)
+
+  def apply_func_to_keys(self, func):
+    assert callable(func)
+    return ParamsFlattener({func(k): v for k, v in self.unflat.items()})
 
   def apply_func(self, func, other=None, inplace=False, as_dict=False):
     if other is not None:

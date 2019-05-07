@@ -133,6 +133,9 @@ def train_neural(
     if save_dir:
       step = n_train * (i + 1)
       result_valid.append(mean_all, step=step)
+      result_valid = result_valid.w_postfix('mean')
+      result_valid.append(
+        result_inner.getitem(-1).sub('test_nll').w_postfix('final'))
       log_tf_event(writer, 'meta_valid_outer', mean_all, step)
     # Save current snapshot
     last_valid = mean_all['test_nll']
