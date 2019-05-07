@@ -42,7 +42,7 @@ def analyzing_mask(mask_gen, layer_size, mode, iteration, iter_interval, text_di
       for index, drop in enumerate([drop, sparse_r_drop]):
         drop = np.array(drop, dtype=int)
         retain = 1 - drop
-        certain = tensor2numpy(variance > variance.median())
+        certain = tensor2numpy(variance < variance.median())
         uncertain = 1 - certain
         certain_drop = certain * drop
         certain_retain = certain * retain
@@ -60,6 +60,7 @@ def sampling_mask(mask_gen, layer_size, model_train, params, sample_num=10000, m
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
     mask_result = None
+    #import pdb; pdb.set_trace()
     #if mask=='test' and (iteration % iter_interval == 0):
     if (iteration % iter_interval == 0):
         for i in range(sample_num):
@@ -114,7 +115,7 @@ def sampling_mask(mask_gen, layer_size, model_train, params, sample_num=10000, m
         for index, drop in enumerate([drop, sparse_r_drop]):
             drop = np.array(drop, dtype=int)
             retain = 1 - drop
-            certain = tensor2numpy(mask_var > mask_var.median())
+            certain = tensor2numpy(mask_var < mask_var.median())
             uncertain = 1 - certain
             certain_drop = certain * drop
             certain_retain = certain * retain
@@ -186,16 +187,16 @@ def plot_masks(mask, layer_0_topk, layer_1_topk, mask_sum, layer_0_prefer_topk, 
     
     plot_dist(tensor2numpy(mask_var), os.path.join(result_dir, 'iter{}_dist_var.png'.format(iteration)), 'distribution of mask uncertainty')
     plot_dist(tensor2numpy(mask_mean), os.path.join(result_dir, 'iter{}_dist_mean.png'.format(iteration)),'distribution of mask retain prob')
-    
+    plot_scatter(tensor2numpy(mask_mean), tensor2numpy(mask_var), os.path.join(result_dir, 'iter{}_mean-var.png'.format(iteration)), 'distribution of mask mean-var')
     return sparse_r, overlap_mask_ratio_0, overlap_mask_ratio_1, overlap_prefer_ratio_0, overlap_prefer_ratio_1
 
 def plot_mask_result(mask_result, result_dir):
-    plot_2d(mask_result['sparse_0'], os.path.join(result_dir,'sparse_0.png'), 'sparse ratio of layer 0')
-    plot_2d(mask_result['sparse_1'], os.path.join(result_dir,'sparse_1.png'), 'sparse ratio of layer 1')
-    plot_2d(mask_result['overlap_mask_ratio_0'], os.path.join(result_dir,'overlap_mask_ratio_0.png'), 'overlap ratio between topk/mask of layer 0')
-    plot_2d(mask_result['overlap_mask_ratio_1'], os.path.join(result_dir,'overlap_mask_ratio_1.png'), 'overlap ratio between topk/mask of layer 1')
-    plot_2d(mask_result['overlap_prefer_ratio_0'], os.path.join(result_dir,'overlap_prefer_ratio_0.png'), 'overlap ratio between topk/prefer of layer 0')
-    plot_2d(mask_result['overlap_prefer_ratio_1'], os.path.join(result_dir,'overlap_prefer_ratio_1.png'), 'overlap ratio between topk/prefer of layer 1')
+    plot_1D(mask_result['sparse_0'], os.path.join(result_dir,'sparse_0.png'), 'sparse ratio of layer 0')
+    plot_1D(mask_result['sparse_1'], os.path.join(result_dir,'sparse_1.png'), 'sparse ratio of layer 1')
+    plot_1D(mask_result['overlap_mask_ratio_0'], os.path.join(result_dir,'overlap_mask_ratio_0.png'), 'overlap ratio between topk/mask of layer 0')
+    plot_1D(mask_result['overlap_mask_ratio_1'], os.path.join(result_dir,'overlap_mask_ratio_1.png'), 'overlap ratio between topk/mask of layer 1')
+    plot_1D(mask_result['overlap_prefer_ratio_0'], os.path.join(result_dir,'overlap_prefer_ratio_0.png'), 'overlap ratio between topk/prefer of layer 0')
+    plot_1D(mask_result['overlap_prefer_ratio_1'], os.path.join(result_dir,'overlap_prefer_ratio_1.png'), 'overlap ratio between topk/prefer of layer 1')
 
 def plot_loss(model_cls, model, params, input_data, dataset, feature_gen, mask_gen, step_gen, scale_way, xmin=-2.0, xmax=0.5, num_x=20, mode='test', iteration=0, iter_interval=10, loss_dir='result/draw_loss'):
     #if mode == 'test' and ((iteration-1) % iter_interval == 0) and (iteration >1):
@@ -206,7 +207,7 @@ def plot_loss(model_cls, model, params, input_data, dataset, feature_gen, mask_g
         model_train = C(model_cls(params=params.detach()))
         #step_data = data['in_train'].load()
         step_data = input_data
-        train_nll = model_train(*step_data)
+        train_nll, train_acc = model_train(*step_data)
         train_nll.backward()
 
         g = model_train.params.grad.flat.detach()
@@ -234,25 +235,52 @@ def plot_loss(model_cls, model, params, input_data, dataset, feature_gen, mask_g
         L2_Y = (step_Y * step_Y).sum()
 
         layer_settings = [['mat_0', 'bias_0', 'mat_1', 'bias_1'], ['mat_0', 'bias_0'], ['mat_1', 'bias_1']]
-        result_dirs = ['loss_scale_{}'.format(scale_way), 'loss_layer0_scale_{}'.format(scale_way), 'loss_layer1_scale_{}'.format(scale_way)]
+        normalize_way = 'filter_norm'
+        #result_dirs = ['loss_all_scale_{}'.format(scale_way), 'loss_layer0_scale_{}'.format(scale_way), 'loss_layer1_scale_{}'.format(scale_way)]
+        result_dirs = ['loss_all_scale_{}'.format(scale_way)]
         for layer_set, result_dir in zip(layer_settings, result_dirs):
-            result_dir = os.path.join(loss_dir, result_dir)
-            if not os.path.exists(result_dir):
-                os.makedirs(result_dir)
+            grad_dir = os.path.join(loss_dir, normalize_way, result_dir, 'gradient')
+            if not os.path.exists(grad_dir):
+                os.makedirs(grad_dir)
+            step_dir = os.path.join(loss_dir, normalize_way, result_dir, 'step')
+            if not os.path.exists(step_dir):
+                os.makedirs(step_dir)
             step_X_ = params.new_from_flat(-1.0 * step_X)
             step_Y_ = params.new_from_flat(1.0 * step_Y)
             #step_X2_ = params.new_from_flat(-10.0 * step_X)
             #step_Y2_ = params.new_from_flat(0.1 * step_Y)
+
+            if normalize_way is not None:
+              for step in (step_X_, step_Y_):
+                for matrix in ['mat_0', 'bias_0', 'mat_1', 'bias_1']:
+                  di = step.unflat[matrix]
+                  norm_di = torch.norm(di,2, dim=0)
+                  thetai = params.unflat[matrix]
+                  if normalize_way == 'filter_norm':
+                    norm_thetai = torch.norm(di,2, dim=0) ## TODO Division by zero bug fix
+                    normalize_di = di * norm_thetai / (norm_di+1e-5)
+                  elif normalize_way == 'weight_norm':
+                    normalize_di = di * thetai / (di + 1e-5)
+                  step.unflat[matrix] = normalize_di
+
             abs_X = step_X_.abs().sum()
             abs_Y = step_Y_.abs().sum()
             L2_X = (step_X_ * step_X_).sum()
             L2_Y = (step_Y_ * step_Y_).sum()
             scale_X, scale_Y = 0, 0
+                
+            #import pdb; pdb.set_trace()
+            for layer in ['mat_1', 'bias_1']:
+                scale_X += abs_X.unflat[layer].item()
+                scale_Y += abs_Y.unflat[layer].item()
+            
+            scale_g_s = scale_X/scale_Y
+            scale_s_g = scale_Y/scale_X
+
             for layer in layer_set:
                 scale_X += abs_X.unflat[layer].item()
                 scale_Y += abs_Y.unflat[layer].item()
-            scale_g_s = scale_X/scale_Y
-            scale_s_g = scale_Y/scale_X
+            
             #import pdb; pdb.set_trace()
             #step_Y_ = step_Y_ * (step_X_.abs().sum() /  step_Y_.abs().sum())
             if scale_way == 's':
@@ -268,8 +296,8 @@ def plot_loss(model_cls, model, params, input_data, dataset, feature_gen, mask_g
             Z_Y = get_1D_Loss(Y, step_Y_, scale_g, step_Y.size(), layer_set, dataset, model_cls, params)
             #Z_X2 = get_1D_Loss(X, step_X2_, scale, step_X.size(), layer_set, data['in_train'], model_cls, params)
             #Z_Y2 = get_1D_Loss(Y, step_Y2_, scale,step_Y.size(), layer_set,data['in_train'], model_cls, params)
-            plot_2d(X, Z_X, os.path.join(result_dir, 'iter_{}_STEPxMASK_1dLoss.png'.format(iteration)))
-            plot_2d(Y, Z_Y, os.path.join(result_dir, 'iter_{}_1.0xGradient_1dLoss.png'.format(iteration)))
+            plot_2d(X, Z_X, os.path.join(step_dir, 'iter_{:04d}_STEPxMASK_1dLoss.png'.format(iteration)), 'L1 norm = {:.2f}'.format(scale_X*scale_s))
+            plot_2d(Y, Z_Y, os.path.join(grad_dir, 'iter_{:04d}_1.0xGradient_1dLoss.png'.format(iteration)),'L1 norm = {:.2f}'.format(scale_Y*scale_g))
             #plot_2d(Y, Z_X2, os.path.join(result_dir,'iter_{}_10xStepxMASK_1dLoss.png'.format(iteration)))
             #plot_2d(Y, Z_Y2, os.path.join(result_dir,'iter_{}_0.1xGradient_1dLoss.png'.format(iteration)))
     #import pdb; pdb.set_trace()
@@ -289,12 +317,23 @@ def get_1D_Loss(X, step_X_, scale, flat_size, layers, dataset, model_cls, params
     model_train = C(model_cls(params=params_z.detach()))
     for index in range(len(dataset)):
       input_data = dataset.load()
-      temp[axis_x] = model_train(*input_data).item()/input_data[0].size(0)
+      train_nll, _ = model_train(*input_data)
+      temp[axis_x] = train_nll.item()/input_data[0].size(0)
       if index==0:
         Z[axis_x] = temp[axis_x]
       else:
         Z[axis_x] += temp[axis_x]
-  return Z    
+  return Z
+def plot_1D(data, savefig='mask.png', title=None):
+  sns.set()
+  x = np.linspace(1, len(data), len(data))
+  fig = plt.figure()
+  plt.plot(x,data)
+  plt.title(title)
+  if savefig is not None:
+    plt.savefig(savefig)
+    plt.close()
+  return fig
 def plot_3D(X=None, Y=None, Z=None, savefig='test.png'):
   """
   ======================
@@ -377,6 +416,7 @@ def plot_mask(mask, savefig='mask.png', title=None):
   """
   plt.title(title)
   plt.savefig(savefig)
+  plt.close()
   #plt.show()
   
 def plot_2d(x, y, savefig='mask.png', title=None):
@@ -385,15 +425,44 @@ def plot_2d(x, y, savefig='mask.png', title=None):
   plt.title(title)
   plt.plot(x,y)
   plt.savefig(savefig)
+  plt.close()
   #plt.show()
 
-
+def plot_2d2(x, y, savefig='mask.png', title=None):
+  axis = np.linspace(1, len(x), len(x))
+  sns.set()
+  fig = plt.figure()
+  plt.title(title)
+  plt.plot(axis, x, label='mean')
+  plt.plot(axis, y, label='var')
+  plt.legend(loc='upper left')
+  plt.savefig(savefig)
+  plt.close()
 def plot_dist(x, savefig='mask.png', title=None):
   sns.set()
   fig = plt.figure()
   sns.distplot(x)
   plt.title(title)
   plt.savefig(savefig)
+  plt.close()
+def plot_scatter(x,y, savefig='boxplot.png', title=None):
+  sns.set()
+  fig = plt.figure()
+  #tips = sns.load_dataset("tips")
+  channel_dim = len(x)
+  #x = np.linspace(1, channel_dim, channel_dim)
+  for i in range(channel_dim):
+    #import pdb; pdb.set_trace()
+    #plt.plot(x, data[i, :])
+    plt.scatter(x[i], y[i], marker='o', color='blue')
+  
+  #sns.catplot(x="channel", y="retain", kind="swarm", data=array(data))
+  plt.xlabel('mean')
+  plt.ylabel('var')
+  plt.title(title)
+  plt.savefig(savefig)
+  plt.close()
+  #import pdb; pdb.set_trace()
 
 def tensor2numpy(x):
   return np.array(x.detach().cpu())

@@ -22,6 +22,7 @@ from utils import utils
 from utils.result import ResultDict
 from utils.timer import Walltime, WalltimeChecker
 from utils.torchviz import make_dot
+from utils import analyzers
 
 C = utils.getCudaManager('default')
 sigint = utils.getSignalCatcher('SIGINT')
@@ -47,7 +48,7 @@ class Optimizer(OptimizerBase):
     ############################################################################
     n_samples = 10
     """MSG: better postfix?"""
-    analyze_model = False
+    analyze_model = True
     analyze_surface = False
     ############################################################################
 
@@ -146,12 +147,12 @@ class Optimizer(OptimizerBase):
       ##########################################################################
       """Analyzers"""
       if analyze_model:
-        utils.analyzers.model_analyzer(
-          self, mode, model_train, params, model_cls, data, iter, analyze_mask,
-          sample_mask, draw_loss)
+        analyzers.model_analyzer(
+          self, mode, model_train, params, model_cls, set_size, data, iter, optim_it,analyze_mask=True,
+          sample_mask=True, draw_loss=False)
       if analyze_surface:
-        utils.analyzers.surface_analyzer(
-          params, best_mask, step, set_size, sparsity, writer, iter)
+        analyzers.surface_analyzer(
+          params, best_mask, step, writer, iter)
       ##########################################################################
 
       result = dict(

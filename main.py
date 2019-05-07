@@ -94,8 +94,8 @@ def main():
         results[name] = result
       elif name in neural_optimizers:
         print(f'\n\nOptimizing with learned optimizer: {name}')
-        print(f"Module name: {kwargs['optim_module']}")
         kwargs = neural_optimizers[name]['test_args']
+        print(f"Module name: {kwargs['optim_module']}")
         result = test_neural(name, save_dir, params[name], **problem, **kwargs)
         results[name] = result
 

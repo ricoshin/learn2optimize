@@ -5,7 +5,7 @@ ignore/
 mnist/
 result/
 /.ftpconfig
-test/
+analyze_model/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

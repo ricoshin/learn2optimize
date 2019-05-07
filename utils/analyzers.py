@@ -1,28 +1,28 @@
 from optimize import log_pbar, log_tf_event
-from utils.analyze_model import analyzing_mask, plot_loss, sampling_mask
+from utils.analyze_model import analyzing_mask, plot_loss, sampling_mask, plot_mask_result
 from utils.analyze_surface import (eval_gauss_var, eval_lipschitz,
                                    inversed_masked_params,
                                    random_masked_params)
 from utils.result import ResultDict
 
 
-def model_analyzer(optim, mode, model, params, model_cls, data, iter,
+def model_analyzer(optim, mode, model_train, params, model_cls, set_size,data, iter, optim_it,
                    analyze_mask=False, sample_mask=False, draw_loss=False):
 
-  text_dir = 'test/analyze_mask'
-  result_dir = 'test/drawloss'
-  sample_dir = 'test/mask_compare'
+  text_dir = 'analyze_model/analyze_mask'
+  result_dir = 'analyze_model/drawloss'
+  sample_dir = 'analyze_model/mask_compare'
   mask_dict = ResultDict()
   iter_interval = 10
   sample_num = 10000
 
   if mode == 'test' and analyze_mask:
     analyzing_mask(
-        optim.mask_gen, layer_size, mode, iter, iter_interval, text_dir)
+        optim.mask_gen, set_size, mode, iter, iter_interval, text_dir)
 
   if mode == 'test' and sample_mask:
     mask_result = sampling_mask(
-        optim.mask_gen, layer_size, model_train, params, sample_num, mode,
+        optim.mask_gen, set_size, model_train, params, sample_num, mode,
         iter, iter_interval, sample_dir)
     if mask_result is not None:
       mask_dict.append(mask_result)
@@ -36,7 +36,7 @@ def model_analyzer(optim, mode, model, params, model_cls, data, iter,
         mode=mode, iteration=iter, iter_interval=iter_interval,
         loss_dir=result_dir)
 
-  if sample_mask:
+  if sample_mask and iter == optim_it:
     plot_mask_result(mask_dict, sample_dir)
 
   return

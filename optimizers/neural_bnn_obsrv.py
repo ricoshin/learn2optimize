@@ -21,6 +21,7 @@ from utils import utils
 from utils.result import ResultDict
 from utils.timer import Walltime, WalltimeChecker
 from utils.torchviz import make_dot
+from utils import analyzers
 
 C = utils.getCudaManager('default')
 sigint = utils.getSignalCatcher('SIGINT')
@@ -44,11 +45,9 @@ class Optimizer(OptimizerBase):
     self.set_mode(mode)
 
     ############################################################################
+    analyze_model = True
+    analyze_surface = False
     do_masking = True
-    analyze_mask = False
-    sample_mask = False
-    draw_loss = False
-    mask_dict = ResultDict()
     ############################################################################
 
     result_dict = ResultDict()
@@ -110,10 +109,13 @@ class Optimizer(OptimizerBase):
           params = params.detach_()
 
       ##########################################################################
-      utils.analyzers.model_analyzer(
-        self, mode, model_train, params, model_cls, data, iter, analyze_mask,
-        sample_mask, draw_loss)
-      # utils.analyzers.surface_analyzer()
+      if analyze_model:
+        analyzers.model_analyzer(
+          self, mode, model_train, params, model_cls, set_size, data, iter, optim_it,analyze_mask=True,
+          sample_mask=True, draw_loss=False)
+      if analyze_surface:
+        analyzers.surface_analyzer(
+          params, best_mask, step, writer, iter)
       ##########################################################################
 
       # result dict
