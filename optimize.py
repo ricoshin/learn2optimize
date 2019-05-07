@@ -140,20 +140,9 @@ def train_neural(name, save_dir, args, data_cls, model_cls, optim_module, n_epoc
         model_cls, iter_valid, unroll, out_mul, writer, 'valid')
       result_outer.append(result_inner)
       result_mean = result_inner.mean()
-      log_pbar(result_mean , valid_pbar)
-
-    if lr_scheduling:
-      scheduler.step(result_mean['test_nll'])
-
-    # Log TF-event: averaged valid loss
-    mean_all = result_outer.mean()
-    if save_dir:
-      step = n_train * (i + 1)
-      result_valid.append(mean_all, step=step)
-      result_valid = result_valid.w_postfix('mean')
-      result_valid.append(
-        result_inner.getitem(-1).sub('test_nll').w_postfix('final'))
-      log_tf_event(writer, 'meta_valid_outer', mean_all, step)
+      log_pbar(result_mean ,valid_pbar)
+      #print('mean: {:02f} last: {:02f}'.format(result_inner['test_nll'].mean(), result_inner['test_nll'][iter_valid-1])
+    
     mean_over_valid = result_outer.mean(0)
     for key in mean_over_valid.keys():
       x = mean_over_valid[key]
@@ -164,6 +153,21 @@ def train_neural(name, save_dir, args, data_cls, model_cls, optim_module, n_epoc
       #writer['main'].add_figure(title, fig, i)
       image_writer.add_figure(category, fig, i)
       plt.close()
+    
+    if lr_scheduling:
+      #scheduler.step(result_mean['test_nll'])
+      scheduler.step(mean_over_valid['test_nll'][iter_valid-1])
+    # Log TF-event: averaged valid loss
+    mean_all = result_outer.mean()
+    if save_dir:
+      step = n_train * (i + 1)
+      result_valid.append(mean_all, step=step)
+      result_valid = result_valid.w_postfix('mean')
+      result_valid.append(
+        result_inner.getitem(-1).sub('test_nll').w_postfix('final'))
+      log_tf_event(writer, 'meta_valid_outer', mean_all, step)
+
+    
     # Save current snapshot
     last_valid = mean_all['test_nll']
     if last_valid < best_valid:
