@@ -11,7 +11,7 @@ import pandas as pd
 import seaborn as sns
 import torch
 from tensorboardX import SummaryWriter
-
+import seaborn as sns
 _tensor_managers = {}
 _cuda_managers = {}
 
@@ -460,3 +460,16 @@ def plot_grid(update, grid, title, names, x='step_num'):
   plt.savefig(f'plot_{x}_grid.png')
   print('Plot displayed!')
   print('Plot saved!')
+
+def plot_1D(data, savefig='mask.png', title=None):
+  sns.set()
+  x = np.linspace(1, len(data), len(data))
+  fig = plt.figure()
+  plt.yscale('log')
+  plt.grid(True)
+  plt.plot(x,data)
+  plt.title(title)
+  if savefig is not None:
+    plt.savefig(savefig)
+    #plt.close()
+  return fig

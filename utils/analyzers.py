@@ -15,7 +15,7 @@ def model_analyzer(optim, mode, model_train, params, model_cls, set_size,data, i
   mask_dict = ResultDict()
   iter_interval = 10
   sample_num = 10000
-
+  is_mask_dict = False
   if mode == 'test' and analyze_mask:
     analyzing_mask(
         optim.mask_gen, set_size, mode, iter, iter_interval, text_dir)
@@ -26,6 +26,7 @@ def model_analyzer(optim, mode, model_train, params, model_cls, set_size,data, i
         iter, iter_interval, sample_dir)
     if mask_result is not None:
       mask_dict.append(mask_result)
+      is_mask_dict = True
 
   if mode == 'test' and draw_loss:
     plot_loss(
@@ -36,7 +37,7 @@ def model_analyzer(optim, mode, model_train, params, model_cls, set_size,data, i
         mode=mode, iteration=iter, iter_interval=iter_interval,
         loss_dir=result_dir)
 
-  if sample_mask and iter == optim_it:
+  if sample_mask and is_mask_dict:
     plot_mask_result(mask_dict, sample_dir)
 
   return

@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib
 # matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+
 plt.style.use('ggplot')
 
 parser = argparse.ArgumentParser(description='live plotter for saved result.')
@@ -97,7 +98,6 @@ def main():
       y_vec = np.append(y_vec[1:],0.0)
 
   LivePlotter(results)
-
 
 
 if __name__ =="__main__":

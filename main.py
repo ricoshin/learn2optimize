@@ -39,7 +39,12 @@ parser.add_argument('--retest_all', action='store_true',
                     help='all the optimizers will be forcibly retested.')
 parser.add_argument('--volatile', action='store_true',
                     help='supress saving fuctions')
-
+parser.add_argument('--optim', type=str, default='SGD')
+parser.add_argument('--lr', type=float, default=1.0)
+parser.add_argument('--meta_model', type=str, default='rnn', choices=['rnn', 'ours'])
+parser.add_argument('--multi_obsrv', action='store_true')
+parser.add_argument('--not_masking', action='store_true')
+parser.add_argument('--k_obsrv', type=int, default=10)
 
 def main():
   args = parser.parse_args()
@@ -55,10 +60,10 @@ def main():
   save_dir = utils.prepare_dir(args.problem, args.result_dir, args.save_dir)
   # set problem & config
   print(f'Problem: {args.problem}')
-  cfg = Config(getConfig(args.problem))
+  cfg = Config(getConfig(args))
   cfg.update_from_parsed_args(args)
   cfg.save(save_dir)
-
+  #import pdb; pdb.set_trace()
   problem = cfg.problem.dict
   neural_optimizers = cfg.neural_optimizers.dict
   normal_optimizers = cfg.normal_optimizers.dict
@@ -77,7 +82,8 @@ def main():
       print(f"\nTraining neural optimizer: {name}")
       kwargs = neural_optimizers[name]['train_args']
       print(f"Module name: {kwargs['optim_module']}")
-      params[name] = train_neural(name, save_dir, **problem, **kwargs)
+      #import pdb; pdb.set_trace()
+      params[name] = train_neural(name, save_dir, args, **problem, **kwargs)
   ##############################################################################
   print('\n\n\nMeta-testing..')
   results = {}
@@ -90,13 +96,13 @@ def main():
       if name in normal_optimizers:
         print(f'\nOptimizing with static optimizer: {name}')
         kwargs = normal_optimizers[name]
-        result = test_normal(name, save_dir, **problem, **kwargs)
+        result = test_normal(name, save_dir, args, **problem, **kwargs)
         results[name] = result
       elif name in neural_optimizers:
         print(f'\n\nOptimizing with learned optimizer: {name}')
         kwargs = neural_optimizers[name]['test_args']
         print(f"Module name: {kwargs['optim_module']}")
-        result = test_neural(name, save_dir, params[name], **problem, **kwargs)
+        result = test_neural(name, save_dir, args, params[name], **problem, **kwargs)
         results[name] = result
 
   ##############################################################################

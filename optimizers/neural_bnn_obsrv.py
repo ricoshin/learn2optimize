@@ -39,7 +39,7 @@ class Optimizer(OptimizerBase):
     self.mask_gen = MaskGenerator(hidden_sz)
     self.params_tracker = ParamsIndexTracker(n_tracks=10)
 
-  def meta_optimize(self, meta_optimizer, data, model_cls, optim_it, unroll,
+  def meta_optimize(self, args, meta_optimizer, data, model_cls, optim_it, unroll,
                     out_mul, tf_writer=None, mode='train'):
     assert mode in ['train', 'valid', 'test']
     self.set_mode(mode)
@@ -47,7 +47,11 @@ class Optimizer(OptimizerBase):
     ############################################################################
     analyze_model = True
     analyze_surface = False
-    do_masking = True
+    #do_masking = True
+    if args.not_masking:
+      do_masking = False
+    else:
+      do_masking = True
     ############################################################################
 
     result_dict = ResultDict()

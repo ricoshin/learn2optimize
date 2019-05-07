@@ -59,7 +59,7 @@ class Optimizer(OptimizerBase):
       raise RuntimeError(f'Unknown rnn_cell type: {self.rnn_cell}')
     return self.output(out), OptimizerStates([s_0, s_1])
 
-  def meta_optimize(self, meta_optimizer, data, model_cls, optim_it, unroll,
+  def meta_optimize(self, args, meta_optimizer, data, model_cls, optim_it, unroll,
                     out_mul, writer, mode='train'):
     assert mode in ['train', 'valid', 'test']
     self.set_mode(mode)

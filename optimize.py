@@ -16,6 +16,7 @@ from utils import utils
 from utils.result import ResultDict
 from utils.utils import TFWriter, ReduceLROnPlateau
 from utils.timer import Walltime, WalltimeChecker
+import matplotlib.pyplot as plt
 
 C = utils.getCudaManager('default')
 tqdm.monitor_interval = 0
@@ -43,10 +44,9 @@ def log_tf_event(writer, tag, result_dict, step, walltime=None, w_name='main'):
   except:
     import pdb; pdb.set_trace()
 
-def train_neural(
-  name, save_dir, data_cls, model_cls, optim_module, n_epoch=20, n_train=20,
+def train_neural(name, save_dir, args, data_cls, model_cls, optim_module, n_epoch=20, n_train=20,
   n_valid=100, iter_train=100, iter_valid=100, unroll=20, lr=0.001,
-  preproc=False, out_mul=1.0):
+  preproc=False, out_mul=1.0, meta_optimizer='SGD'):
   """Function for meta-training and meta-validation of learned optimizers.
   """
 
@@ -59,13 +59,16 @@ def train_neural(
     return None  # no need to be trained if there's no parameter
 
   writer = TFWriter(save_dir, name) if save_dir else None
+  image_writer = SummaryWriter(save_dir) if save_dir else None
   # TODO: handle variable arguments according to different neural optimziers
 
   """meta-optimizer"""
-
-  meta_optim = 'SGD'
+  if meta_optimizer == 'sgd':
+    meta_optim = 'SGD'
+  elif meta_optimizer == 'adam':
+    meta_optim = 'Adam'
   lr_scheduling = True
-  # meta_optim = 'Adam'
+  
   if 'bnn' not in optim_module:
     wd = 1e-5
     print(f'meta optimizer: {meta_optim} / lr: {lr} / wd: {wd}\n')
@@ -87,6 +90,7 @@ def train_neural(
         {'params':p_step, 'lr':lr, 'weight_decay':wd},
         {'params':p_mask, 'lr':mask_lr},
     ])
+
   if lr_scheduling:
     scheduler = ReduceLROnPlateau(
       meta_optim, mode='min', factor=0.5, patience=1, verbose=True)
@@ -103,10 +107,12 @@ def train_neural(
     result_valid = ResultDict()
 
     # Meta-training
+    result_outer = ResultDict()
     for j in train_pbar:
       train_data = data.sample_meta_train()
-      result_inner, _ = optimizer.meta_optimize(meta_optim, train_data,
-        model_cls, iter_train, unroll, out_mul, writer, 'train')
+      result_inner, _ = optimizer.meta_optimize(args, meta_optim, train_data,
+        model_cls, iter_train, unroll, out_mul, writer,'train')
+      result_outer.append(result_inner)
       mean = result_inner.mean()
       log_pbar(mean, train_pbar)
       if save_dir:
@@ -114,12 +120,23 @@ def train_neural(
         result_train.append(mean, step=step)
         log_tf_event(writer, 'meta_train_outer', mean, step)
 
+    mean_over_train = result_outer.mean(0)
+    for key in mean_over_train.keys():
+      x = mean_over_train[key]
+      mean = x.mean()
+      category = 'meta_train_outer/{}'.format(key)
+      title = 'mean {} = {:02f} & last {} = {:02f}'.format(key, mean, key, x[len(x)-1])
+      fig = utils.plot_1D(x, None, title)
+      #writer['main'].add_figure(title, fig, i)
+      #import pdb; pdb.set_trace()
+      image_writer.add_figure(category, fig, i)
+      plt.close()
     # Meta-validation
     valid_pbar = tqdm(range(n_valid), 'outer_valid')
     result_outer = ResultDict()
     for j in valid_pbar:
       valid_data = data.sample_meta_valid()
-      result_inner, _ = optimizer.meta_optimize(meta_optim, valid_data,
+      result_inner, _ = optimizer.meta_optimize(args, meta_optim, valid_data,
         model_cls, iter_valid, unroll, out_mul, writer, 'valid')
       result_outer.append(result_inner)
       result_mean = result_inner.mean()
@@ -137,6 +154,16 @@ def train_neural(
       result_valid.append(
         result_inner.getitem(-1).sub('test_nll').w_postfix('final'))
       log_tf_event(writer, 'meta_valid_outer', mean_all, step)
+    mean_over_valid = result_outer.mean(0)
+    for key in mean_over_valid.keys():
+      x = mean_over_valid[key]
+      mean = x.mean()
+      category = 'meta_valid_outer/{}'.format(key)
+      title = 'mean {} = {:02f} & last {} = {:02f}'.format(key, mean, key, x[len(x)-1])
+      fig = utils.plot_1D(x, None, title)
+      #writer['main'].add_figure(title, fig, i)
+      image_writer.add_figure(category, fig, i)
+      plt.close()
     # Save current snapshot
     last_valid = mean_all['test_nll']
     if last_valid < best_valid:
@@ -153,7 +180,7 @@ def train_neural(
   return best_params
 
 
-def test_neural(name, save_dir, learned_params, data_cls, model_cls,
+def test_neural(name, save_dir, args, learned_params, data_cls, model_cls,
                 optim_module, n_test=100, iter_test=100, preproc=False,
                 out_mul=1.0):
   """Function for meta-test of learned optimizers.
@@ -180,7 +207,7 @@ def test_neural(name, save_dir, learned_params, data_cls, model_cls,
   # Meta-test
   for j in tests_pbar:
     data = data_cls().sample_meta_test()
-    result_inner, params = optimizer.meta_optimize(meta_optim, data, model_cls,
+    result_inner, params = optimizer.meta_optimize(args, meta_optim, data, model_cls,
       iter_test, unroll, out_mul, writer, 'test')
     result_outer.append(result_inner)
     # NOTE: we are not using best_test snapshot for final inner evaluation
@@ -196,7 +223,18 @@ def test_neural(name, save_dir, learned_params, data_cls, model_cls,
       last_test=last_test, mean_test=mean_test, best_test=best_test)
     log_pbar(result_test, tests_pbar)
 
-  mean_over_j = result_outer.mean(0)
+    for key in result_inner.keys():
+      x = result_inner[key]
+      mean = x.mean()
+      category = 'meta_test_outer/{}'.format(key)
+      title = 'mean {} = {:02f} & last {} = {:02f}'.format(key, mean, key, x[len(x)-1])
+      fig = utils.plot_1D(x, None, title)
+      #writer['main'].add_figure(title, fig, j)
+      #import pdb; pdb.set_trace()
+      image_writer.add_figure(category, fig, j)
+      plt.close()
+  mean_over_test = result_outer.mean(0)
+  
   # TF-events for inner loop (train & test)
   if save_dir:
     for i in range(iter_test):

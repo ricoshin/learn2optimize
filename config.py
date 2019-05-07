@@ -49,8 +49,8 @@ _neural_optimizers_mnist = odict({
     # },
 
     'Proposed': {
-        'train_args': odict(n_epoch=5, n_train=2, n_valid=1, iter_train=5,
-                            iter_valid=25, unroll=2, lr=1.0),
+        'train_args': odict(n_epoch=50, n_train=20, n_valid=10, iter_train=500,
+                            iter_valid=2500, unroll=20, lr=1.0),
     }, # SGD: 1.0 / Adam: ?
 })
 
@@ -116,19 +116,19 @@ _normal_optimizers = odict({
 """NOTE: n_valid here is not for an actual inner-level held-out development set.
   It just means n sampling of mini-set from inner-test."""
 _common_test_args_debug = odict(n_test=5, iter_test=200)
-_common_test_args = odict(n_test=10, iter_test=50)
+_common_test_args = odict(n_test=10, iter_test=5000)
 # _common_test_args = odict(n_test=2, iter_test=5)
 
 ################################################################################
 
 # train_optimizers = []
-# train_optimizers = ['RNN-base']
+#train_optimizers = ['RNN-base']
 train_optimizers = ['Proposed']
 # train_optimizers = ['RNN-base','Proposed']
 # train_optimizers = ['RNN-base', 'Proposed', 'Proposed']
 # test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM', 'RNN-base', 'Proposed')
 # test_optimizers = ['ADAM']
-# test_optimizers = ['RNN-base']
+#test_optimizers = ['RNN-base']
 test_optimizers = ['Proposed']
 # test_optimizers = ['Proposed', 'ADAM']
 # test_optimizers = ['RNN-base','Proposed', 'ADAM']
@@ -196,6 +196,23 @@ def _sanity_check():
       print(f"Warning: Unknown optimizer name: {name}! "
             "It will be tested without trained parameters.")
 
+def _get_args(args):
+  if args.meta_model == 'ours':
+    CONFIG['neural_optimizers']['Proposed']['train_args']['lr'] = args.lr
+    CONFIG['neural_optimizers']['Proposed']['train_args']['meta_optimizer'] = args.optim
+    #CONFIG['neural_optimizers']['Proposed']['train_args']['args'] = args
+    if args.multi_obsrv:
+      CONFIG['neural_optimizers']['Proposed']['train_args']['optim_module'] = 'neural_bnn_obsrv3'
+      CONFIG['neural_optimizers']['Proposed']['test_args']['optim_module'] = 'neural_bnn_obsrv3'
+    else:
+      CONFIG['neural_optimizers']['Proposed']['train_args']['optim_module'] = 'neural_bnn_obsrv'
+      CONFIG['neural_optimizers']['Proposed']['test_args']['optim_module'] = 'neural_bnn_obsrv'
+  elif args.meta_model == 'rnn':
+    #import pdb; pdb.set_trace()
+    CONFIG['neural_optimizers']['RNN-base']['train_args']['lr'] = args.lr
+    CONFIG['neural_optimizers']['RNN-base']['train_args']['meta_optimizer'] = args.optim
+    #CONFIG['neural_optimizers']['RNN-base']['train_args']['args'] = args
+
 # def _dump_as_json(out_dir):
 #   _sanity_check()
 #   dump_dict = odict()
@@ -207,13 +224,14 @@ def _sanity_check():
 #   with open(os.path.join(out_dir, 'config.json'), 'w') as f:
 #     json.dump(dump_dict, f, indent=2)
 
-def getConfig(problem='debug'):
+def getConfig(args):
   global CONFIG
   CONFIG = odict()
-  _get_problem(problem)
-  _get_neural_optimizers(problem)
-  _get_normal_optimizers(problem)
+  _get_problem(args.problem)
+  _get_neural_optimizers(args.problem)
+  _get_normal_optimizers(args.problem)
   _get_test_optimizers()
+  _get_args(args)
   _sanity_check()
   return CONFIG
 
