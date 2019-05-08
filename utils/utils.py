@@ -466,8 +466,8 @@ def plot_1D(data, limit_y, savefig='mask.png', title=None):
   x = np.linspace(1, len(data), len(data))
   fig = plt.figure()
   ax = fig.add_subplot(1,1,1)
-  if limit_y or max(data) < 1:
-    ax.set_ylim([0, 1])
+  if limit_y or max(data) < 1.0:
+    ax.set_ylim([0.0, 1.0])
   #if limit_y:
   #plt.yscale('log')
   plt.grid(True)

@@ -158,6 +158,8 @@ def train_neural(name, save_dir, args, data_cls, model_cls, optim_module, n_epoc
       best_valid = last_valid
       optimizer.params.save(name, save_dir)
       best_params = copy.deepcopy(optimizer.params)
+    if (i % 10 ==0) and (i>0):
+      optimizer.params.save('{}_epoch{}'.format(name, i), save_dir)
     # Update epoch progress bar
     result_epoch = dict(last_valid=last_valid, best_valid=best_valid)
     log_pbar(result_epoch, epoch_pbar)
