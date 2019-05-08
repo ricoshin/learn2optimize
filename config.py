@@ -197,7 +197,7 @@ def _sanity_check():
             "It will be tested without trained parameters.")
 
 def _get_args(args):
-  if args.meta_model == 'ours':
+  if args.meta_model in 'ours':
     CONFIG['neural_optimizers']['Proposed']['train_args']['lr'] = args.lr
     CONFIG['neural_optimizers']['Proposed']['train_args']['meta_optimizer'] = args.optim
     #CONFIG['neural_optimizers']['Proposed']['train_args']['args'] = args
@@ -207,7 +207,7 @@ def _get_args(args):
     else:
       CONFIG['neural_optimizers']['Proposed']['train_args']['optim_module'] = 'neural_bnn_obsrv'
       CONFIG['neural_optimizers']['Proposed']['test_args']['optim_module'] = 'neural_bnn_obsrv'
-  elif args.meta_model == 'rnn':
+  elif args.meta_model in 'rnn':
     #import pdb; pdb.set_trace()
     CONFIG['neural_optimizers']['RNN-base']['train_args']['lr'] = args.lr
     CONFIG['neural_optimizers']['RNN-base']['train_args']['meta_optimizer'] = args.optim

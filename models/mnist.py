@@ -287,3 +287,66 @@ class MNISTModel(nn.Module):
       acc = None
 
     return loss, acc
+
+
+class MNISTModel2(nn.Module):
+    def __init__(self):
+      super(MNISTModel2, self).__init__(input_size=28 * 28, layer_size=500, n_layers=1, num_classes=10,
+              sb_mode='none', params=None).
+      self.input_size = input_size
+      self.layer_size = layer_size
+      self.n_layers = n_layers
+      self.num_classes = num_classes
+      self.sb_mode = sb_mode
+      layers = []
+      for i in range(n_layers):
+        if i == 0:
+          layers += nn.Linear(input_size, layer_size)
+        else:
+          layers += nn.Linear(layer_size, layer_size)
+        layers += nn.ReLu()
+      layers += nn.Linear(layer_size, num_classes)
+      self.layer = nn.Sequential(*layers)
+      
+      if params is not None:
+        if not isinstance(params, ParamsFlattener):
+          raise TypeError("params argumennts has to be "
+                        "an instance of ParamsFlattener!")
+        self.params = params
+      else:
+        inp_size = 28 * 28
+        params = {}
+        for i in range(n_layers):
+          params[f'mat_{i}'] = torch.randn(inp_size, layer_size) * 0.001
+          # TODO: use a better initialization
+          params[f'bias_{i}'] = torch.zeros(layer_size)
+          self._reset_parameters(params[f'mat_{i}'], params[f'bias_{i}'])
+          inp_size = layer_size
+
+        params[f'mat_{n_layers}'] = torch.randn(
+            inp_size, 10) * 0.001  # TODO:init
+        params[f'bias_{n_layers}'] = torch.zeros(10)
+        self._reset_parameters(
+            params[f'mat_{n_layers}'], params[f'bias_{n_layers}'])
+        self.params = ParamsFlattener(params)
+        self.params.register_parameter_to(self)
+
+      self.sb_linear = {}
+      self._activations = {}
+      self.nonlinear = nn.Sigmoid()
+      self.loss = nn.NLLLoss()
+      
+
+    def forward(self, inp, out=None):
+      inp = C(inp.view(inp.size(0), self.input_size))
+      inp = self.layer(inp)
+      inp = F.log_softmax(inp, dim=1)
+      if out is not None:
+        out = C(out)
+        loss = self.loss(inp, out)
+        acc = (inp.argmax(dim=1) == out).float().mean()
+      else:
+        loss = None
+        acc = None
+
+      return loss, acc
