@@ -461,15 +461,50 @@ def plot_grid(update, grid, title, names, x='step_num'):
   print('Plot displayed!')
   print('Plot saved!')
 
-def plot_1D(data, savefig='mask.png', title=None):
+def plot_1D(data, limit_y, savefig='mask.png', title=None):
   sns.set()
   x = np.linspace(1, len(data), len(data))
   fig = plt.figure()
-  plt.yscale('log')
+  ax = fig.add_subplot(1,1,1)
+  if limit_y or max(data) < 1:
+    ax.set_ylim([0, 1])
+  #if limit_y:
+  #plt.yscale('log')
   plt.grid(True)
   plt.plot(x,data)
+  
   plt.title(title)
   if savefig is not None:
     plt.savefig(savefig)
     #plt.close()
   return fig
+
+
+def save_images(save_dir, image_writer, mean_over_mode, epoch, mode):
+  for key in mean_over_mode.keys():
+    x = mean_over_mode[key]
+    mean = x.mean()
+    category = 'meta_{}_outer/{}'.format(mode, key)
+    file_dir = os.path.join(save_dir, category)
+    if (mode == 'test') or (mode == 'normal'):
+      filename = 'test_iter{:02d}_({})_{}'.format(epoch, mode, key)
+    else:
+      filename = 'epoch{:02d}_({})_{}'.format(epoch, mode, key)
+    if save_dir:
+      filepath = os.path.join(file_dir, filename)
+      if not os.path.exists(file_dir):
+        os.makedirs(file_dir)
+    else:
+      filepath = None
+    if mode == 'test':
+      title = 'testiter {:02d} (mean) {} = {:02f} & (last) {} = {:02f}'.format(epoch, key, mean, key, x[len(x)-1])
+    else:
+      title = 'epoch {:02d} (mean) {} = {:02f} & (last) {} = {:02f}'.format(epoch, key, mean, key, x[len(x)-1])
+    if key in ['train_nll', 'test_nll']:
+      limit_y = True
+    else:
+      limit_y = False
+    fig = plot_1D(x, limit_y, filepath, title)
+    #writer['main'].add_figure(title, fig, i)
+    image_writer.add_figure(category, fig, epoch)
+    plt.close()

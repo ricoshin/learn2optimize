@@ -49,7 +49,7 @@ class Optimizer(OptimizerBase):
     #n_samples = 10
     n_samples = args.k_obsrv
     """MSG: better postfix?"""
-    analyze_model = True
+    analyze_model = False
     analyze_surface = False
     ############################################################################
 

@@ -119,18 +119,9 @@ def train_neural(name, save_dir, args, data_cls, model_cls, optim_module, n_epoc
         step = n_train * i + j
         result_train.append(mean, step=step)
         log_tf_event(writer, 'meta_train_outer', mean, step)
-
     mean_over_train = result_outer.mean(0)
-    for key in mean_over_train.keys():
-      x = mean_over_train[key]
-      mean = x.mean()
-      category = 'meta_train_outer/{}'.format(key)
-      title = 'mean {} = {:02f} & last {} = {:02f}'.format(key, mean, key, x[len(x)-1])
-      fig = utils.plot_1D(x, None, title)
-      #writer['main'].add_figure(title, fig, i)
-      #import pdb; pdb.set_trace()
-      image_writer.add_figure(category, fig, i)
-      plt.close()
+    utils.save_images(os.path.join(save_dir, name), image_writer, mean_over_train, i, 'train')
+
     # Meta-validation
     valid_pbar = tqdm(range(n_valid), 'outer_valid')
     result_outer = ResultDict()
@@ -144,19 +135,12 @@ def train_neural(name, save_dir, args, data_cls, model_cls, optim_module, n_epoc
       #print('mean: {:02f} last: {:02f}'.format(result_inner['test_nll'].mean(), result_inner['test_nll'][iter_valid-1])
     
     mean_over_valid = result_outer.mean(0)
-    for key in mean_over_valid.keys():
-      x = mean_over_valid[key]
-      mean = x.mean()
-      category = 'meta_valid_outer/{}'.format(key)
-      title = 'mean {} = {:02f} & last {} = {:02f}'.format(key, mean, key, x[len(x)-1])
-      fig = utils.plot_1D(x, None, title)
-      #writer['main'].add_figure(title, fig, i)
-      image_writer.add_figure(category, fig, i)
-      plt.close()
+    utils.save_images(os.path.join(save_dir, name), image_writer, mean_over_valid, i, 'valid')
     
     if lr_scheduling:
       #scheduler.step(result_mean['test_nll'])
-      scheduler.step(mean_over_valid['test_nll'][iter_valid-1])
+      if mean_over_valid['test_nll'][iter_valid-1] <0.2:
+        scheduler.step(mean_over_valid['test_nll'][iter_valid-1])
     # Log TF-event: averaged valid loss
     mean_all = result_outer.mean()
     if save_dir:
@@ -169,7 +153,7 @@ def train_neural(name, save_dir, args, data_cls, model_cls, optim_module, n_epoc
 
     
     # Save current snapshot
-    last_valid = mean_all['test_nll']
+    last_valid = mean_over_valid['test_nll'][iter_valid-1]
     if last_valid < best_valid:
       best_valid = last_valid
       optimizer.params.save(name, save_dir)
@@ -194,6 +178,7 @@ def test_neural(name, save_dir, args, learned_params, data_cls, model_cls,
   optim_cls = _get_optim_by_name(optim_module)
 
   writer = TFWriter(save_dir, name) if save_dir else None
+  image_writer = SummaryWriter(save_dir) if save_dir else None
 
   optimizer = C(optim_cls())
   if learned_params is not None:
@@ -227,23 +212,15 @@ def test_neural(name, save_dir, args, learned_params, data_cls, model_cls,
       last_test=last_test, mean_test=mean_test, best_test=best_test)
     log_pbar(result_test, tests_pbar)
 
-    for key in result_inner.keys():
-      x = result_inner[key]
-      mean = x.mean()
-      category = 'meta_test_outer/{}'.format(key)
-      title = 'mean {} = {:02f} & last {} = {:02f}'.format(key, mean, key, x[len(x)-1])
-      fig = utils.plot_1D(x, None, title)
-      #writer['main'].add_figure(title, fig, j)
-      #import pdb; pdb.set_trace()
-      image_writer.add_figure(category, fig, j)
-      plt.close()
+    utils.save_images(os.path.join(save_dir, name), image_writer, result_inner, j, 'test')
+    
   mean_over_test = result_outer.mean(0)
   
   # TF-events for inner loop (train & test)
   if save_dir:
     for i in range(iter_test):
-      mean = mean_over_j.getitem(i)
-      walltime = mean_over_j['walltime'][i]
+      mean = mean_over_test.getitem(i)
+      walltime = mean_over_test['walltime'][i]
       log_tf_event(writer, 'meta_test_inner', mean, i, walltime)
     result_outer.save(name, save_dir)
     result_outer.save_as_csv(name, save_dir, 'meta_test_inner')
@@ -260,6 +237,7 @@ def test_normal(name, save_dir, data_cls, model_cls, optim_cls, optim_args,
   optim_cls = _get_attr_by_name(optim_cls)
 
   writer = TFWriter(save_dir, name) if save_dir else None
+  image_writer = SummaryWriter(save_dir) if save_dir else None
 
   tests_pbar = tqdm(range(n_test), 'outer_test')
   result_outer = ResultDict()
@@ -301,6 +279,9 @@ def test_normal(name, save_dir, data_cls, model_cls, optim_cls, optim_args,
         )
       log_pbar(result_iter, iter_pbar)
       result_inner.append(result_iter)
+
+    utils.save_images(os.path.join(save_dir, name), image_writer, result_inner, j, 'normal')
+    
 
     result_outer.append(result_inner)
     result_final.append(final_inner_test(model, data['in_test']))

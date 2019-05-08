@@ -11,21 +11,32 @@
 
 ## RNN-base
 CUDA_VISIBLE_DEVICES=0 python main.py --meta_model rnn --optim sgd --lr 1.0 --save_dir RNN_base_sgd_1.0
-CUDA_VISIBLE_DEVICES=0 python main.py --meta_model rnn --optim sgd --lr 0.1 --save_dir RNN_base_sgd_0.1
-CUDA_VISIBLE_DEVICES=0 python main.py --meta_model rnn --optim adam --lr 1.0 --save_dir RNN_base_adam_1.0
-CUDA_VISIBLE_DEVICES=0 python main.py --meta_model rnn --optim adam --lr 0.1 --save_dir RNN_base_adam_0.1
+CUDA_VISIBLE_DEVICES=0 python main.py --meta_model rnn --optim sgd --lr 1.0 --save_dir RNN_base_sgd_1.0_2
+#CUDA_VISIBLE_DEVICES=1 python main.py --meta_model rnn --optim sgd --lr 0.1 --save_dir RNN_base_sgd_0.1
+#CUDA_VISIBLE_DEVICES=1 python main.py --meta_model rnn --optim sgd --lr 0.1 --save_dir RNN_base_sgd_0.1_2
+#CUDA_VISIBLE_DEVICES=2 python main.py --meta_model rnn --optim adam --lr 1.0 --save_dir RNN_base_adam_1.0
+#CUDA_VISIBLE_DEVICES=2 python main.py --meta_model rnn --optim adam --lr 1.0 --save_dir RNN_base_adam_1.0_2
+#CUDA_VISIBLE_DEVICES=3 python main.py --meta_model rnn --optim adam --lr 0.1 --save_dir RNN_base_adam_0.1
+#CUDA_VISIBLE_DEVICES=3 python main.py --meta_model rnn --optim adam --lr 0.1 --save_dir RNN_base_adam_0.1_2
 ## MLP Not masking
-CUDA_VISIBLE_DEVICES=0 python main.py --meta_model ours --not_masking --optim sgd --lr 1.0 --save_dir MLP_single_sgd_1.0
-CUDA_VISIBLE_DEVICES=0 python main.py --meta_model ours --not_masking --optim sgd --lr 0.1 --save_dir MLP_single_sgd_0.1
-A_VISIBLE_DEVICES=0 python main.py --meta_model ours --not_masking --optim adam --lr 1.0 --save_dir MLP_single_adam_1.0
-CUDA_VISIBLE_DEVICES=0 python main.py --meta_model ours --not_masking --optim adam --lr 0.0 --save_dir MLP_single_adam_0.1
-
+#CUDA_VISIBLE_DEVICES=0 python main.py --meta_model ours --not_masking --optim sgd --lr 1.0 --save_dir MLP_single_nomask_sgd_1.0
+#CUDA_VISIBLE_DEVICES=0 python main.py --meta_model ours --not_masking --optim sgd --lr 1.0 --save_dir MLP_single_nomask_sgd_1.0_2
+#CUDA_VISIBLE_DEVICES=0 python main.py --meta_model ours --not_masking --optim sgd --lr 0.1 --save_dir MLP_single_nomask_sgd_0.1
+#CUDA_VISIBLE_DEVICES=0 python main.py --meta_model ours --not_masking --optim sgd --lr 0.1 --save_dir MLP_single_nomask_sgd_0.1_2
+#CUDA_VISIBLE_DEVICES=0 python main.py --meta_model ours --not_masking --optim adam --lr 1.0 --save_dir MLP_single_nomask_adam_1.0
+#CUDA_VISIBLE_DEVICES=0 python main.py --meta_model ours --not_masking --optim adam --lr 1.0 --save_dir MLP_single_nomask_adam_1.0_2
+CUDA_VISIBLE_DEVICES=1 python main.py --meta_model ours --not_masking --optim adam --lr 0.1 --save_dir MLP_single_nomask_adam_0.1
+CUDA_VISIBLE_DEVICES=1 python main.py --meta_model ours --not_masking --optim adam --lr 0.1 --save_dir MLP_single_nomask_adam_0.1_2
 ## MLP masking
-CUDA_VISIBLE_DEVICES=0 python main.py --meta_model ours --optim sgd --lr 1.0 --save_dir MLP_single_sgd_1.0
-CUDA_VISIBLE_DEVICES=0 python main.py --meta_model ours --optim sgd --lr 0.1 --save_dir MLP_single_sgd_0.1
-A_VISIBLE_DEVICES=0 python main.py --meta_model ours --optim adam --lr 1.0 --save_dir MLP_single_adam_1.0
-CUDA_VISIBLE_DEVICES=0 python main.py --meta_model ours --optim adam --lr 0.0 --save_dir MLP_single_adam_0.1
+#CUDA_VISIBLE_DEVICES=0 python main.py --meta_model ours --optim sgd --lr 1.0 --save_dir MLP_single_mask_sgd_1.0
+#CUDA_VISIBLE_DEVICES=0 python main.py --meta_model ours --optim sgd --lr 1.0 --save_dir MLP_single_mask_sgd_1.0_2
+#CUDA_VISIBLE_DEVICES=1 python main.py --meta_model ours --optim sgd --lr 0.1 --save_dir MLP_single_mask_sgd_0.1
+#CUDA_VISIBLE_DEVICES=1 python main.py --meta_model ours --optim sgd --lr 0.1 --save_dir MLP_single_mask_sgd_0.1_2
+#CUDA_VISIBLE_DEVICES=1 python main.py --meta_model ours --optim adam --lr 1.0 --save_dir MLP_single_mask_adam_1.0
+#CUDA_VISIBLE_DEVICES=1 python main.py --meta_model ours --optim adam --lr 1.0 --save_dir MLP_single_mask_adam_1.0_2
+#CUDA_VISIBLE_DEVICES=1 python main.py --meta_model ours --optim adam --lr 0.1 --save_dir MLP_single_mask_adam_0.1
+#CUDA_VISIBLE_DEVICES=1 python main.py --meta_model ours --optim adam --lr 0.1 --save_dir MLP_single_mask_adam_0.1_2
 
 
 ## MLP k obsrv
-CUDA_VISIBLE_DEVICES=0 python main.py --meta_model ours --multi_obsrv --k_obsrv 5 --optim adam --lr 1e-1 --save_dir MLP_obsrv10_adam_0.1
+#CUDA_VISIBLE_DEVICES=0 python main.py --meta_model ours --multi_obsrv --k_obsrv 5 --optim adam --lr 1e-1 --save_dir MLP_obsrv10_adam_0.1

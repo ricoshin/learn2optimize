@@ -45,7 +45,7 @@ class Optimizer(OptimizerBase):
     self.set_mode(mode)
 
     ############################################################################
-    analyze_model = True
+    analyze_model = False
     analyze_surface = False
     #do_masking = True
     if args.not_masking:
@@ -63,7 +63,8 @@ class Optimizer(OptimizerBase):
     self.feature_gen.new()
     self.step_gen.new()
     sparse_r = {}  # sparsity
-    layer_size = {'layer_0': 500, 'layer_1': 10}  # NOTE: make it smarter
+    iter_pbar = tqdm(range(1, optim_it + 1), 'Inner_loop')
+    set_size = {'layer_0': 500, 'layer_1': 10}  # NOTE: make it smarter
 
     for iter in iter_pbar:
       debug_1 = sigint.is_active(iter == 1 or iter % 10 == 0)
@@ -123,15 +124,25 @@ class Optimizer(OptimizerBase):
       ##########################################################################
 
       # result dict
-      result = dict(
-          train_nll=train_nll.tolist(),
-          test_nll=test_nll.tolist(),
-          train_acc=train_acc.tolist(),
-          test_acc=test_acc.tolist(),
-          test_kld=test_kld.tolist(),
-          walltime=walltime.time,
-          **mask.sparsity(0.5),
-      )
+      if do_masking:
+        result = dict(
+            train_nll=train_nll.tolist(),
+            test_nll=test_nll.tolist(),
+            train_acc=train_acc.tolist(),
+            test_acc=test_acc.tolist(),
+            test_kld=test_kld.tolist(),
+            walltime=walltime.time,
+            **mask.sparsity(0.5),
+        )
+      else:
+        result = dict(
+            train_nll=train_nll.tolist(),
+            test_nll=test_nll.tolist(),
+            train_acc=train_acc.tolist(),
+            test_acc=test_acc.tolist(),
+            test_kld=test_kld.tolist(),
+            walltime=walltime.time,
+        )
       result_dict.append(result)
       log_pbar(result, iter_pbar)
 
