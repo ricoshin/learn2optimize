@@ -44,6 +44,7 @@ parser.add_argument('--lr', type=float, default=1.0)
 parser.add_argument('--meta_model', type=str, default='rnn', choices=['rnn', 'ours'])
 parser.add_argument('--multi_obsrv', action='store_true')
 parser.add_argument('--not_masking', action='store_true')
+parser.add_argument('--save_image', action='store_true')
 parser.add_argument('--k_obsrv', type=int, default=10)
 
 def main():

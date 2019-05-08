@@ -120,8 +120,10 @@ def train_neural(name, save_dir, args, data_cls, model_cls, optim_module, n_epoc
         result_train.append(mean, step=step)
         log_tf_event(writer, 'meta_train_outer', mean, step)
     mean_over_train = result_outer.mean(0)
-    utils.save_images(os.path.join(save_dir, name), image_writer, mean_over_train, i, 'train')
-
+    if args.save_image:
+      utils.save_images(os.path.join(save_dir, name), image_writer, mean_over_train, i, 'train')
+    else:
+      utils.save_images(None, image_writer, mean_over_train, i, 'train')
     # Meta-validation
     valid_pbar = tqdm(range(n_valid), 'outer_valid')
     result_outer = ResultDict()
@@ -135,8 +137,10 @@ def train_neural(name, save_dir, args, data_cls, model_cls, optim_module, n_epoc
       #print('mean: {:02f} last: {:02f}'.format(result_inner['test_nll'].mean(), result_inner['test_nll'][iter_valid-1])
     
     mean_over_valid = result_outer.mean(0)
-    utils.save_images(os.path.join(save_dir, name), image_writer, mean_over_valid, i, 'valid')
-    
+    if args.save_image:
+      utils.save_images(os.path.join(save_dir, name), image_writer, mean_over_valid, i, 'valid')
+    else:
+      utils.save_images(None, image_writer, mean_over_valid, i, 'valid')
     if lr_scheduling:
       #scheduler.step(result_mean['test_nll'])
       if mean_over_valid['test_nll'][iter_valid-1] <0.2:
@@ -158,6 +162,8 @@ def train_neural(name, save_dir, args, data_cls, model_cls, optim_module, n_epoc
       best_valid = last_valid
       optimizer.params.save(name, save_dir)
       best_params = copy.deepcopy(optimizer.params)
+    if (i % 10 ==0) and (i>0):
+      optimizer.params.save('{}_epoch{}'.format(name, i), save_dir)
     # Update epoch progress bar
     result_epoch = dict(last_valid=last_valid, best_valid=best_valid)
     log_pbar(result_epoch, epoch_pbar)
@@ -211,8 +217,10 @@ def test_neural(name, save_dir, args, learned_params, data_cls, model_cls,
     result_test = dict(
       last_test=last_test, mean_test=mean_test, best_test=best_test)
     log_pbar(result_test, tests_pbar)
-
-    utils.save_images(os.path.join(save_dir, name), image_writer, result_inner, j, 'test')
+    if args.save_image:
+      utils.save_images(os.path.join(save_dir, name), image_writer, result_inner, j, 'test')
+    else:
+      utils.save_images(None, image_writer, result_inner, j, 'test')
     
   mean_over_test = result_outer.mean(0)
   
