@@ -67,6 +67,8 @@ def train_neural(name, save_dir, args, data_cls, model_cls, optim_module, n_epoc
     meta_optim = 'SGD'
   elif meta_optimizer == 'adam':
     meta_optim = 'Adam'
+  else:
+    meta_optim = 'SGD'
   lr_scheduling = True
   
   if 'bnn' not in optim_module:

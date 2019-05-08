@@ -292,7 +292,7 @@ class MNISTModel(nn.Module):
 class MNISTModel2(nn.Module):
     def __init__(self):
       super(MNISTModel2, self).__init__(input_size=28 * 28, layer_size=500, n_layers=1, num_classes=10,
-              sb_mode='none', params=None).
+              sb_mode='none', params=None)
       self.input_size = input_size
       self.layer_size = layer_size
       self.n_layers = n_layers
