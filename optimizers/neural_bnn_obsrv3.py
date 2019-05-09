@@ -51,7 +51,7 @@ class Optimizer(OptimizerBase):
     """MSG: better postfix?"""
     analyze_model = False
     analyze_surface = False
-    print('n_samples = {}'.format(n_samples))
+    #print('n_samples = {}'.format(n_samples))
     ############################################################################
 
     if analyze_surface:

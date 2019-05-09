@@ -52,7 +52,7 @@ class Optimizer(OptimizerBase):
       do_masking = False
     else:
       do_masking = True
-    print('do_masking = {}'.format(do_masking))
+    #print('do_masking = {}'.format(do_masking))
     ############################################################################
 
     result_dict = ResultDict()
