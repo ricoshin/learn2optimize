@@ -59,7 +59,7 @@ class Optimizer(OptimizerBase):
       raise RuntimeError(f'Unknown rnn_cell type: {self.rnn_cell}')
     return self.output(out), OptimizerStates([s_0, s_1])
 
-  def meta_optimize(self, meta_optimizer, data, model_cls, optim_it, unroll,
+  def meta_optimize(self, args, meta_optimizer, data, model_cls, optim_it, unroll,
                     out_mul, writer, mode='train'):
     assert mode in ['train', 'valid', 'test']
     self.set_mode(mode)
@@ -89,8 +89,11 @@ class Optimizer(OptimizerBase):
         model_train = C(model_cls(params=params.detach()))
         train_nll, train_acc = model_train(*data['in_train'].load())
         train_nll.backward()
-        assert model_train.params.flat.grad is not None
-        g = model_train.params.flat.grad
+        if model_train.params.flat.grad is not None:
+          g = model_train.params.flat.grad
+        else:
+          g = model_train._grad2params(model_train.params)
+        assert g is not None
 
         if use_indexer:
           # This indexer was originally for outer-level batch split
@@ -116,6 +119,7 @@ class Optimizer(OptimizerBase):
           updates, states = self(g.detach(), states)
           updates = params.new_from_flat(updates)
           params = params + updates * out_mul
+          #params = params - params.new_from_flat(g) * 0.1
 
       with WalltimeChecker(walltime if mode == 'train' else None):
         model_test = C(model_cls(params=params))

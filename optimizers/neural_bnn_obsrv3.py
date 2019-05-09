@@ -40,16 +40,18 @@ class Optimizer(OptimizerBase):
     self.mask_gen = MaskGenerator(hidden_sz)
     self.params_tracker = ParamsIndexTracker(n_tracks=10)
 
-  def meta_optimize(self, meta_optimizer, data, model_cls, optim_it, unroll,
+  def meta_optimize(self, args, meta_optimizer, data, model_cls, optim_it, unroll,
                     out_mul, writer, mode='train'):
     assert mode in ['train', 'valid', 'test']
     self.set_mode(mode)
 
     ############################################################################
-    n_samples = 10
+    #n_samples = 10
+    n_samples = args.k_obsrv
     """MSG: better postfix?"""
     analyze_model = False
     analyze_surface = False
+    #print('n_samples = {}'.format(n_samples))
     ############################################################################
 
     if analyze_surface:

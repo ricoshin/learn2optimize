@@ -39,15 +39,20 @@ class Optimizer(OptimizerBase):
     self.mask_gen = MaskGenerator(hidden_sz)
     self.params_tracker = ParamsIndexTracker(n_tracks=10)
 
-  def meta_optimize(self, meta_optimizer, data, model_cls, optim_it, unroll,
+  def meta_optimize(self, args, meta_optimizer, data, model_cls, optim_it, unroll,
                     out_mul, tf_writer=None, mode='train'):
     assert mode in ['train', 'valid', 'test']
     self.set_mode(mode)
 
     ############################################################################
-    analyze_model = True
+    analyze_model = False
     analyze_surface = False
-    do_masking = True
+    #do_masking = True
+    if args.not_masking:
+      do_masking = False
+    else:
+      do_masking = True
+    #print('do_masking = {}'.format(do_masking))
     ############################################################################
 
     result_dict = ResultDict()
@@ -59,7 +64,8 @@ class Optimizer(OptimizerBase):
     self.feature_gen.new()
     self.step_gen.new()
     sparse_r = {}  # sparsity
-    layer_size = {'layer_0': 500, 'layer_1': 10}  # NOTE: make it smarter
+    iter_pbar = tqdm(range(1, optim_it + 1), 'Inner_loop')
+    set_size = {'layer_0': 500, 'layer_1': 10}  # NOTE: make it smarter
 
     for iter in iter_pbar:
       debug_1 = sigint.is_active(iter == 1 or iter % 10 == 0)
@@ -119,15 +125,25 @@ class Optimizer(OptimizerBase):
       ##########################################################################
 
       # result dict
-      result = dict(
-          train_nll=train_nll.tolist(),
-          test_nll=test_nll.tolist(),
-          train_acc=train_acc.tolist(),
-          test_acc=test_acc.tolist(),
-          test_kld=test_kld.tolist(),
-          walltime=walltime.time,
-          **mask.sparsity(0.5),
-      )
+      if do_masking:
+        result = dict(
+            train_nll=train_nll.tolist(),
+            test_nll=test_nll.tolist(),
+            train_acc=train_acc.tolist(),
+            test_acc=test_acc.tolist(),
+            test_kld=test_kld.tolist(),
+            walltime=walltime.time,
+            **mask.sparsity(0.5),
+        )
+      else:
+        result = dict(
+            train_nll=train_nll.tolist(),
+            test_nll=test_nll.tolist(),
+            train_acc=train_acc.tolist(),
+            test_acc=test_acc.tolist(),
+            test_kld=test_kld.tolist(),
+            walltime=walltime.time,
+        )
       result_dict.append(result)
       log_pbar(result, iter_pbar)
 

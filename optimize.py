@@ -6,7 +6,7 @@ import sys
 import numpy as np
 import torch
 import torch.optim as optim
-from models.mnist import MNISTData, MNISTModel
+from models.mnist import MNISTData, MNISTModel, MNISTModel2
 from models.model_helpers import ParamsIndexTracker
 from models.quadratic import QuadraticData, QuadraticModel
 from tensorboardX import SummaryWriter
@@ -16,6 +16,7 @@ from utils import utils
 from utils.result import ResultDict
 from utils.utils import TFWriter, ReduceLROnPlateau
 from utils.timer import Walltime, WalltimeChecker
+import matplotlib.pyplot as plt
 
 C = utils.getCudaManager('default')
 tqdm.monitor_interval = 0
@@ -43,10 +44,9 @@ def log_tf_event(writer, tag, result_dict, step, walltime=None, w_name='main'):
   except:
     import pdb; pdb.set_trace()
 
-def train_neural(
-  name, save_dir, data_cls, model_cls, optim_module, n_epoch=20, n_train=20,
+def train_neural(name, save_dir, args, data_cls, model_cls, optim_module, n_epoch=20, n_train=20,
   n_valid=100, iter_train=100, iter_valid=100, unroll=20, lr=0.001,
-  preproc=False, out_mul=1.0):
+  preproc=False, out_mul=1.0, meta_optimizer='SGD'):
   """Function for meta-training and meta-validation of learned optimizers.
   """
 
@@ -59,13 +59,18 @@ def train_neural(
     return None  # no need to be trained if there's no parameter
 
   writer = TFWriter(save_dir, name) if save_dir else None
+  image_writer = SummaryWriter(save_dir) if save_dir else None
   # TODO: handle variable arguments according to different neural optimziers
 
   """meta-optimizer"""
-
-  meta_optim = 'SGD'
+  if meta_optimizer == 'sgd':
+    meta_optim = 'SGD'
+  elif meta_optimizer == 'adam':
+    meta_optim = 'Adam'
+  else:
+    meta_optim = 'SGD'
   lr_scheduling = True
-  # meta_optim = 'Adam'
+  
   if 'bnn' not in optim_module:
     wd = 1e-5
     print(f'meta optimizer: {meta_optim} / lr: {lr} / wd: {wd}\n')
@@ -87,6 +92,7 @@ def train_neural(
         {'params':p_step, 'lr':lr, 'weight_decay':wd},
         {'params':p_mask, 'lr':mask_lr},
     ])
+
   if lr_scheduling:
     scheduler = ReduceLROnPlateau(
       meta_optim, mode='min', factor=0.5, patience=1, verbose=True)
@@ -94,6 +100,7 @@ def train_neural(
   data = data_cls()
   best_params = None
   best_valid = 999999
+  best_converge = 999999
   result_outer = ResultDict()
   epoch_pbar = tqdm(range(n_epoch), 'epoch')
 
@@ -103,31 +110,46 @@ def train_neural(
     result_valid = ResultDict()
 
     # Meta-training
+    result_outer = ResultDict()
     for j in train_pbar:
       train_data = data.sample_meta_train()
-      result_inner, _ = optimizer.meta_optimize(meta_optim, train_data,
-        model_cls, iter_train, unroll, out_mul, writer, 'train')
+      result_inner, _ = optimizer.meta_optimize(args, meta_optim, train_data,
+        model_cls, iter_train, unroll, out_mul, writer,'train')
+      result_outer.append(result_inner)
       mean = result_inner.mean()
       log_pbar(mean, train_pbar)
       if save_dir:
         step = n_train * i + j
         result_train.append(mean, step=step)
         log_tf_event(writer, 'meta_train_outer', mean, step)
-
+    mean_over_train = result_outer.mean(0)
+    if args.save_image:
+      utils.save_images(os.path.join(save_dir, name), image_writer, mean_over_train, i, 'train')
+    else:
+      utils.save_images(None, image_writer, mean_over_train, i, 'train')
     # Meta-validation
     valid_pbar = tqdm(range(n_valid), 'outer_valid')
     result_outer = ResultDict()
     for j in valid_pbar:
       valid_data = data.sample_meta_valid()
-      result_inner, _ = optimizer.meta_optimize(meta_optim, valid_data,
+      result_inner, _ = optimizer.meta_optimize(args, meta_optim, valid_data,
         model_cls, iter_valid, unroll, out_mul, writer, 'valid')
       result_outer.append(result_inner)
       result_mean = result_inner.mean()
-      log_pbar(result_mean , valid_pbar)
-
+      log_pbar(result_mean ,valid_pbar)
+      #print('mean: {:02f} last: {:02f}'.format(result_inner['test_nll'].mean(), result_inner['test_nll'][iter_valid-1])
+    
+    mean_over_valid = result_outer.mean(0)
+    if args.save_image:
+      utils.save_images(os.path.join(save_dir, name), image_writer, mean_over_valid, i, 'valid')
+    else:
+      utils.save_images(None, image_writer, mean_over_valid, i, 'valid')
     if lr_scheduling:
-      scheduler.step(result_mean['test_nll'])
-
+      #scheduler.step(result_mean['test_nll'])
+      last_converge = mean_over_valid['test_nll'][iter_valid-1]
+      if last_converge < best_converge:
+        best_converge = last_converge
+        scheduler.step(last_converge)
     # Log TF-event: averaged valid loss
     mean_all = result_outer.mean()
     if save_dir:
@@ -137,12 +159,16 @@ def train_neural(
       result_valid.append(
         result_inner.getitem(-1).sub('test_nll').w_postfix('final'))
       log_tf_event(writer, 'meta_valid_outer', mean_all, step)
+
+    
     # Save current snapshot
-    last_valid = mean_all['test_nll']
+    last_valid = mean_over_valid['test_nll'][iter_valid-1]
     if last_valid < best_valid:
       best_valid = last_valid
       optimizer.params.save(name, save_dir)
       best_params = copy.deepcopy(optimizer.params)
+    if (i % 10 ==0) and (i>0):
+      optimizer.params.save('{}_epoch{}'.format(name, i), save_dir)
     # Update epoch progress bar
     result_epoch = dict(last_valid=last_valid, best_valid=best_valid)
     log_pbar(result_epoch, epoch_pbar)
@@ -153,7 +179,7 @@ def train_neural(
   return best_params
 
 
-def test_neural(name, save_dir, learned_params, data_cls, model_cls,
+def test_neural(name, save_dir, args, learned_params, data_cls, model_cls,
                 optim_module, n_test=100, iter_test=100, preproc=False,
                 out_mul=1.0):
   """Function for meta-test of learned optimizers.
@@ -163,6 +189,7 @@ def test_neural(name, save_dir, learned_params, data_cls, model_cls,
   optim_cls = _get_optim_by_name(optim_module)
 
   writer = TFWriter(save_dir, name) if save_dir else None
+  image_writer = SummaryWriter(save_dir) if save_dir else None
 
   optimizer = C(optim_cls())
   if learned_params is not None:
@@ -180,7 +207,7 @@ def test_neural(name, save_dir, learned_params, data_cls, model_cls,
   # Meta-test
   for j in tests_pbar:
     data = data_cls().sample_meta_test()
-    result_inner, params = optimizer.meta_optimize(meta_optim, data, model_cls,
+    result_inner, params = optimizer.meta_optimize(args, meta_optim, data, model_cls,
       iter_test, unroll, out_mul, writer, 'test')
     result_outer.append(result_inner)
     # NOTE: we are not using best_test snapshot for final inner evaluation
@@ -195,13 +222,18 @@ def test_neural(name, save_dir, learned_params, data_cls, model_cls,
     result_test = dict(
       last_test=last_test, mean_test=mean_test, best_test=best_test)
     log_pbar(result_test, tests_pbar)
-
-  mean_over_j = result_outer.mean(0)
+    if args.save_image:
+      utils.save_images(os.path.join(save_dir, name), image_writer, result_inner, j, 'test')
+    else:
+      utils.save_images(None, image_writer, result_inner, j, 'test')
+    
+  mean_over_test = result_outer.mean(0)
+  
   # TF-events for inner loop (train & test)
   if save_dir:
     for i in range(iter_test):
-      mean = mean_over_j.getitem(i)
-      walltime = mean_over_j['walltime'][i]
+      mean = mean_over_test.getitem(i)
+      walltime = mean_over_test['walltime'][i]
       log_tf_event(writer, 'meta_test_inner', mean, i, walltime)
     result_outer.save(name, save_dir)
     result_outer.save_as_csv(name, save_dir, 'meta_test_inner')
@@ -210,7 +242,7 @@ def test_neural(name, save_dir, learned_params, data_cls, model_cls,
   return result_outer
 
 
-def test_normal(name, save_dir, data_cls, model_cls, optim_cls, optim_args,
+def test_normal(name, save_dir, args, data_cls, model_cls, optim_cls, optim_args,
                 n_test, iter_test):
   """function for test of static optimizers."""
   data_cls = _get_attr_by_name(data_cls)
@@ -218,6 +250,7 @@ def test_normal(name, save_dir, data_cls, model_cls, optim_cls, optim_args,
   optim_cls = _get_attr_by_name(optim_cls)
 
   writer = TFWriter(save_dir, name) if save_dir else None
+  image_writer = SummaryWriter(save_dir) if save_dir else None
 
   tests_pbar = tqdm(range(n_test), 'outer_test')
   result_outer = ResultDict()
@@ -259,6 +292,9 @@ def test_normal(name, save_dir, data_cls, model_cls, optim_cls, optim_args,
         )
       log_pbar(result_iter, iter_pbar)
       result_inner.append(result_iter)
+
+    utils.save_images(os.path.join(save_dir, name), image_writer, result_inner, j, 'normal')
+    
 
     result_outer.append(result_inner)
     result_final.append(final_inner_test(model, data['in_test']))

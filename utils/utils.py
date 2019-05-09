@@ -11,7 +11,7 @@ import pandas as pd
 import seaborn as sns
 import torch
 from tensorboardX import SummaryWriter
-
+import seaborn as sns
 _tensor_managers = {}
 _cuda_managers = {}
 
@@ -460,3 +460,53 @@ def plot_grid(update, grid, title, names, x='step_num'):
   plt.savefig(f'plot_{x}_grid.png')
   print('Plot displayed!')
   print('Plot saved!')
+
+def plot_1D(data, limit_y, savefig='mask.png', title=None):
+  sns.set()
+  x = np.linspace(1, len(data), len(data))
+  fig = plt.figure()
+  ax = fig.add_subplot(1,1,1)
+  if limit_y or max(data) < 1.0:
+    ax.set_ylim([0.0, 1.0])
+  #if limit_y:
+  #plt.yscale('log')
+  plt.grid(True)
+  plt.plot(x,data)
+  
+  plt.title(title)
+  if savefig is not None:
+    plt.savefig(savefig)
+    #plt.close()
+  return fig
+
+
+def save_images(save_dir, image_writer, mean_over_mode, epoch, mode):
+  for key in mean_over_mode.keys():
+    x = mean_over_mode[key]
+    mean = x.mean()
+    category = 'meta_{}_outer/{}'.format(mode, key)
+    if save_dir:
+      file_dir = os.path.join(save_dir, category)
+      if (mode == 'test') or (mode == 'normal'):
+        filename = 'test_iter{:02d}_({})_{}'.format(epoch, mode, key)
+      else:
+        filename = 'epoch{:02d}_({})_{}'.format(epoch, mode, key)
+      filepath = os.path.join(file_dir, filename)
+      if not os.path.exists(file_dir):
+        os.makedirs(file_dir)
+    else:
+      filepath = None
+    if mode == 'test':
+      title = 'testiter {:02d} (mean) {} = {:02f} & (last) {} = {:02f}'.format(epoch, key, mean, key, x[len(x)-1])
+    else:
+      title = 'epoch {:02d} (mean) {} = {:02f} & (last) {} = {:02f}'.format(epoch, key, mean, key, x[len(x)-1])
+    if key in ['train_nll', 'test_nll']:
+      limit_y = True
+    else:
+      limit_y = False
+    fig = plot_1D(x, limit_y, filepath, title)
+    
+    if image_writer is not None:
+      #writer['main'].add_figure(title, fig, i)
+      image_writer.add_figure(category, fig, epoch)
+    plt.close()
