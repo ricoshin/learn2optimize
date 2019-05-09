@@ -44,15 +44,17 @@ parser.add_argument('--lr', type=float, default=1.0)
 parser.add_argument('--train_optim', nargs='*', type=str,
                     default=['obsrv_multi'])
 parser.add_argument('--test_optim', nargs='*', type=str,
-                    default=['obsrv_multi'])
+                    default=[])
 parser.add_argument('--no_mask', action='store_true')
 parser.add_argument('--k_obsrv', type=int, default=10)
 
 def main():
   args = parser.parse_args()
   # add arguments that will be used for meta training.
-  train_args = ['meta_optim', 'lr', 'multi_obsrv', 'no_mask', 'k_obsrv']
+  train_args = ['meta_optim', 'lr', 'no_mask', 'k_obsrv']
+  test_args = ['no_mask', 'k_obsrv']
   train_args = {k: v for k, v in vars(args).items() if k in train_args}
+  test_args = {k: v for k, v in vars(args).items() if k in test_args}
   # set CUDA
   args.cuda = not args.cpu and torch.cuda.is_available()
   C.set_cuda(args.cuda)
@@ -63,6 +65,10 @@ def main():
   # set save dir: saving functions will be suppressed if save_dir is None
   args.result_dir = None if args.volatile else args.result_dir
   save_dir = utils.prepare_dir(args.problem, args.result_dir, args.save_dir)
+  if not args.test_optim:
+    args.test_optim = args.train_optim
+    print('No test optimzers.\nAll optimizers set to be trained '
+      f'will be automatically on the list: {args.train_optim}\n')
   # set problem & config
   print(f'Problem: {args.problem}')
   cfg = Config(getConfig(args))
@@ -106,6 +112,7 @@ def main():
       elif name in neural_optimizers:
         print(f'\n\nOptimizing with learned optimizer: {name}')
         kwargs = neural_optimizers[name]['test_args']
+        kwargs.update(cfg.args.get_by_names(test_args))
         # print(f"Module name: {kwargs['optim_module']}")
         result = test_neural(name, save_dir, params[name], **problem, **kwargs)
         results[name] = result

@@ -117,26 +117,16 @@ class Optimizer(OptimizerBase):
           params, best_mask, step, writer, iter)
       ##########################################################################
 
-      # result dict
-      if do_masking:
-        result = dict(
-            train_nll=train_nll.tolist(),
-            test_nll=test_nll.tolist(),
-            train_acc=train_acc.tolist(),
-            test_acc=test_acc.tolist(),
-            test_kld=test_kld.tolist(),
-            walltime=walltime.time,
-            **mask.sparsity(0.5),
-        )
-      else:
-        result = dict(
-            train_nll=train_nll.tolist(),
-            test_nll=test_nll.tolist(),
-            train_acc=train_acc.tolist(),
-            test_acc=test_acc.tolist(),
-            test_kld=test_kld.tolist(),
-            walltime=walltime.time,
-        )
+      result = dict(
+          train_nll=train_nll.tolist(),
+          test_nll=test_nll.tolist(),
+          train_acc=train_acc.tolist(),
+          test_acc=test_acc.tolist(),
+          test_kld=test_kld.tolist(),
+          walltime=walltime.time,
+      )
+      if no_mask is False:
+        result.update(**mask.sparsity(0.5))
       result_dict.append(result)
       log_pbar(result, iter_pbar)
 
