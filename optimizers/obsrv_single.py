@@ -111,7 +111,8 @@ class Optimizer(OptimizerBase):
       ##########################################################################
       if analyze_model:
         analyzers.model_analyzer(
-          self, mode, model_train, params, model_cls, set_size, data, iter, optim_it, analyze_mask=True, sample_mask=True, draw_loss=False)
+          self, mode, model_train, params, model_cls, set_size, data, iter,
+          optim_it, analyze_mask=True, sample_mask=True, draw_loss=False)
       if analyze_surface:
         analyzers.surface_analyzer(
           params, best_mask, step, writer, iter)
