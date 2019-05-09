@@ -39,20 +39,14 @@ class Optimizer(OptimizerBase):
     self.mask_gen = MaskGenerator(hidden_sz)
     self.params_tracker = ParamsIndexTracker(n_tracks=10)
 
-  def meta_optimize(self, args, meta_optimizer, data, model_cls, optim_it, unroll,
-                    out_mul, tf_writer=None, mode='train'):
+  def meta_optimize(self, meta_optim, data, model_cls, optim_it, unroll,
+    out_mul, k_obsrv=0, no_mask=False, writer=None, mode='train'):
     assert mode in ['train', 'valid', 'test']
     self.set_mode(mode)
 
     ############################################################################
     analyze_model = False
     analyze_surface = False
-    #do_masking = True
-    if args.not_masking:
-      do_masking = False
-    else:
-      do_masking = True
-    #print('do_masking = {}'.format(do_masking))
     ############################################################################
 
     result_dict = ResultDict()
@@ -85,7 +79,7 @@ class Optimizer(OptimizerBase):
         step = params.new_from_flat(step[0])
         size = params.size().unflat()
 
-        if do_masking:
+        if not no_mask:
           kld = self.mask_gen(feature, size, debug=debug_1)
           test_kld = kld / data['in_test'].full_size  # * 0.00005
           mask = self.mask_gen.sample_mask()
@@ -104,10 +98,10 @@ class Optimizer(OptimizerBase):
         if mode == 'train':
           unroll_losses += test_nll + test_kld
           if iter % unroll == 0:
-            meta_optimizer.zero_grad()
+            meta_optim.zero_grad()
             unroll_losses.backward()
             nn.utils.clip_grad_value_(self.parameters(), 0.01)
-            meta_optimizer.step()
+            meta_optim.step()
             unroll_losses = 0
 
       with WalltimeChecker(walltime):
@@ -117,8 +111,7 @@ class Optimizer(OptimizerBase):
       ##########################################################################
       if analyze_model:
         analyzers.model_analyzer(
-          self, mode, model_train, params, model_cls, set_size, data, iter, optim_it,analyze_mask=True,
-          sample_mask=True, draw_loss=False)
+          self, mode, model_train, params, model_cls, set_size, data, iter, optim_it, analyze_mask=True, sample_mask=True, draw_loss=False)
       if analyze_surface:
         analyzers.surface_analyzer(
           params, best_mask, step, writer, iter)

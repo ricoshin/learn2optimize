@@ -39,16 +39,20 @@ parser.add_argument('--retest_all', action='store_true',
                     help='all the optimizers will be forcibly retested.')
 parser.add_argument('--volatile', action='store_true',
                     help='supress saving fuctions')
-parser.add_argument('--optim', type=str, default='SGD')
+parser.add_argument('--meta_optim', type=str, default='SGD')
 parser.add_argument('--lr', type=float, default=1.0)
-parser.add_argument('--meta_model', type=str, default='rnn', choices=['rnn', 'ours'])
-parser.add_argument('--multi_obsrv', action='store_true')
-parser.add_argument('--not_masking', action='store_true')
-parser.add_argument('--save_image', action='store_true')
+parser.add_argument('--train_optim', nargs='*', type=str,
+                    default=['obsrv_multi'])
+parser.add_argument('--test_optim', nargs='*', type=str,
+                    default=['obsrv_multi'])
+parser.add_argument('--no_mask', action='store_true')
 parser.add_argument('--k_obsrv', type=int, default=10)
 
 def main():
   args = parser.parse_args()
+  # add arguments that will be used for meta training.
+  train_args = ['meta_optim', 'lr', 'multi_obsrv', 'no_mask', 'k_obsrv']
+  train_args = {k: v for k, v in vars(args).items() if k in train_args}
   # set CUDA
   args.cuda = not args.cpu and torch.cuda.is_available()
   C.set_cuda(args.cuda)
@@ -82,9 +86,9 @@ def main():
     else:
       print(f"\nTraining neural optimizer: {name}")
       kwargs = neural_optimizers[name]['train_args']
-      print(f"Module name: {kwargs['optim_module']}")
-      #import pdb; pdb.set_trace()
-      params[name] = train_neural(name, save_dir, args, **problem, **kwargs)
+      kwargs.update(cfg.args.get_by_names(train_args))
+      # print(f"Module name: {kwargs['optim_module']}")
+      params[name] = train_neural(name, save_dir, **problem, **kwargs)
   ##############################################################################
   print('\n\n\nMeta-testing..')
   results = {}
@@ -97,13 +101,13 @@ def main():
       if name in normal_optimizers:
         print(f'\nOptimizing with static optimizer: {name}')
         kwargs = normal_optimizers[name]
-        result = test_normal(name, save_dir, args, **problem, **kwargs)
+        result = test_normal(name, save_dir, **problem, **kwargs)
         results[name] = result
       elif name in neural_optimizers:
         print(f'\n\nOptimizing with learned optimizer: {name}')
         kwargs = neural_optimizers[name]['test_args']
-        print(f"Module name: {kwargs['optim_module']}")
-        result = test_neural(name, save_dir, args, params[name], **problem, **kwargs)
+        # print(f"Module name: {kwargs['optim_module']}")
+        result = test_neural(name, save_dir, params[name], **problem, **kwargs)
         results[name] = result
 
   ##############################################################################

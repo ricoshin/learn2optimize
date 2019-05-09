@@ -472,7 +472,7 @@ def plot_1D(data, limit_y, savefig='mask.png', title=None):
   #plt.yscale('log')
   plt.grid(True)
   plt.plot(x,data)
-  
+
   plt.title(title)
   if savefig is not None:
     plt.savefig(savefig)
@@ -480,7 +480,8 @@ def plot_1D(data, limit_y, savefig='mask.png', title=None):
   return fig
 
 
-def save_images(save_dir, image_writer, mean_over_mode, epoch, mode):
+def save_figure(name, save_dir, writer, mean_over_mode, epoch, mode):
+  save_dir = os.path.join(save_dir, name)
   for key in mean_over_mode.keys():
     x = mean_over_mode[key]
     mean = x.mean()
@@ -505,8 +506,6 @@ def save_images(save_dir, image_writer, mean_over_mode, epoch, mode):
     else:
       limit_y = False
     fig = plot_1D(x, limit_y, filepath, title)
-    
-    if image_writer is not None:
-      #writer['main'].add_figure(title, fig, i)
-      image_writer.add_figure(category, fig, epoch)
+    if writer is not None:
+      writer['main'].add_figure(category, fig, epoch)
     plt.close()

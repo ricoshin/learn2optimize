@@ -60,11 +60,16 @@ _neural_optimizers = odict({
     'mnist': _neural_optimizers_mnist,
 })
 
-_common_neural_args = {
-    'RNN-base': odict(optim_module='neural_base', preproc=True, out_mul=0.1),
-    # 'Proposed': odict(optim_module='neural_manual_obsrv2', preproc=True, out_mul=0.1),
-    # 'Proposed': odict(optim_module='neural_bnn_obsrv', preproc=True, out_mul=0.1),
-    'Proposed': odict(optim_module='neural_bnn_obsrv3', preproc=True, out_mul=0.1),
+# _common_neural_args = {
+#     'RNN-base': odict(optim_module='neural_base', preproc=True, out_mul=0.1),
+#     # 'Proposed': odict(optim_module='neural_manual_obsrv2', preproc=True, out_mul=0.1),
+#     # 'Proposed': odict(optim_module='neural_bnn_obsrv', preproc=True, out_mul=0.1),
+#     'multi_obsrv': odict(optim_module='neural_bnn_obsrv3'),
+# }
+
+_neural_optimizers_group = {
+  'RNN-base': ('neural_base'),
+  'Proposed': ('obsrv_single', 'obsrv_multi'),
 }
 
 ################################################################################
@@ -115,7 +120,7 @@ _normal_optimizers = odict({
 
 """NOTE: n_valid here is not for an actual inner-level held-out development set.
   It just means n sampling of mini-set from inner-test."""
-_common_test_args_debug = odict(n_test=5, iter_test=200)
+_common_test_args_debug = odict(n_test=5, iter_test=5)
 _common_test_args = odict(n_test=10, iter_test=5000)
 # _common_test_args = odict(n_test=2, iter_test=5)
 
@@ -147,38 +152,57 @@ def _get_problem(problem):
     CONFIG['problem'] = _problems[problem]
   return CONFIG['problem']
 
-def _get_neural_optimizers(problem):
-  if 'neural_optimizers' not in CONFIG:
-    neural_optimizers = _neural_optimizers[problem]
-    neural_optimizers_ = {}
-    for name, optims in neural_optimizers.items():
-      if name in train_optimizers:
-        neural_optimizers_[name] = optims
-    for name, args in _common_neural_args.items():
-      if name in train_optimizers:
-        neural_optimizers_[name]['train_args'].update(args)
-        neural_optimizers_[name]['test_args'] = args
-    for name, opt in neural_optimizers_.items():
-      if name in train_optimizers:
-        if problem == 'debug':
+def _get_neural_optimizers(problem, names=None):
+  if names:
+    train_optimizers = names  # overwrite if names are passed
+
+  neural_optimizers = _neural_optimizers[problem]
+  neural_optimizers_ = {}
+
+  def group_name(name):
+    for k, v in _neural_optimizers_group.items():
+      if name in v:
+        return k
+    raise Exception(f'{name} does NOT belong to '
+      'any neural optimizer name group!')
+
+  for name in train_optimizers:
+    neural_optimizers_[name] = neural_optimizers[group_name(name)]
+    neural_optimizers_[name]['train_args']['optim_module'] = name
+    # if group_name(name) in _common_neural_args.keys():
+    #   common_args = _common_neural_args[group_name(name)]
+    #   neural_optimizers_[name]['train_args'].update(common_args)
+    #   neural_optimizers_[name]['test_args'] = common_args
+
+  for name, opt in neural_optimizers_.items():
+    if name in train_optimizers:
+      if problem == 'debug':
+        if 'test_args' in opt:
           opt['test_args'].update(_common_test_args_debug)
         else:
+          opt['test_args'] = _common_test_args_debug
+      else:
+        if 'test_args' in opt:
           opt['test_args'].update(_common_test_args)
-    CONFIG['neural_optimizers'] = neural_optimizers_
+        else:
+          opt['test_args'] = _common_test_args
+      opt['test_args']['optim_module'] = name
+  CONFIG['neural_optimizers'] = neural_optimizers_
   return CONFIG['neural_optimizers']
 
 def _get_normal_optimizers(problem):
-  if 'normal_optimizers' not in CONFIG:
-    normal_optimizers = _normal_optimizers[problem]
-    for name, opt in normal_optimizers.items():
-      if problem == 'debug':
-        opt.update(_common_test_args_debug)
-      else:
-        opt.update(_common_test_args)
-    CONFIG['normal_optimizers'] = normal_optimizers
+  normal_optimizers = _normal_optimizers[problem]
+  for name, opt in normal_optimizers.items():
+    if problem == 'debug':
+      opt.update(_common_test_args_debug)
+    else:
+      opt.update(_common_test_args)
+  CONFIG['normal_optimizers'] = normal_optimizers
   return CONFIG['normal_optimizers']
 
-def _get_test_optimizers():
+def _get_test_optimizers(names=None):
+  if names:
+    test_optimizers = names  # overwrite if names are passed
   if 'test_optimizers' not in CONFIG:
     CONFIG['test_optimizers'] = test_optimizers
   return CONFIG['test_optimizers']
@@ -196,23 +220,6 @@ def _sanity_check():
       print(f"Warning: Unknown optimizer name: {name}! "
             "It will be tested without trained parameters.")
 
-def _get_args(args):
-  if args.meta_model in 'ours':
-    CONFIG['neural_optimizers']['Proposed']['train_args']['lr'] = args.lr
-    CONFIG['neural_optimizers']['Proposed']['train_args']['meta_optimizer'] = args.optim
-    #CONFIG['neural_optimizers']['Proposed']['train_args']['args'] = args
-    if args.multi_obsrv:
-      CONFIG['neural_optimizers']['Proposed']['train_args']['optim_module'] = 'neural_bnn_obsrv3'
-      CONFIG['neural_optimizers']['Proposed']['test_args']['optim_module'] = 'neural_bnn_obsrv3'
-    else:
-      CONFIG['neural_optimizers']['Proposed']['train_args']['optim_module'] = 'neural_bnn_obsrv'
-      CONFIG['neural_optimizers']['Proposed']['test_args']['optim_module'] = 'neural_bnn_obsrv'
-  elif args.meta_model in 'rnn':
-    #import pdb; pdb.set_trace()
-    CONFIG['neural_optimizers']['RNN-base']['train_args']['lr'] = args.lr
-    CONFIG['neural_optimizers']['RNN-base']['train_args']['meta_optimizer'] = args.optim
-    #CONFIG['neural_optimizers']['RNN-base']['train_args']['args'] = args
-
 # def _dump_as_json(out_dir):
 #   _sanity_check()
 #   dump_dict = odict()
@@ -228,11 +235,9 @@ def getConfig(args):
   global CONFIG
   CONFIG = odict()
   _get_problem(args.problem)
-  _get_neural_optimizers(args.problem)
+  _get_neural_optimizers(args.problem, args.train_optim)
   _get_normal_optimizers(args.problem)
-  _get_test_optimizers()
-  if train_optimizers:
-    _get_args(args)
+  _get_test_optimizers(args.test_optim)
   _sanity_check()
   return CONFIG
 
@@ -258,6 +263,9 @@ class Config(object):
 
   def update_from_parsed_args(self, args):
     self._nested_update({'args': vars(args)})
+
+  def get_by_names(self, names):
+    return {k: v for k, v in self.dict.items() if k in names}
 
   def items(self):
     return [(k, v) for k, v in self.__dict__.items()]

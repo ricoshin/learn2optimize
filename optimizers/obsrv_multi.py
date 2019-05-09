@@ -40,18 +40,18 @@ class Optimizer(OptimizerBase):
     self.mask_gen = MaskGenerator(hidden_sz)
     self.params_tracker = ParamsIndexTracker(n_tracks=10)
 
-  def meta_optimize(self, args, meta_optimizer, data, model_cls, optim_it, unroll,
-                    out_mul, writer, mode='train'):
+  def meta_optimize(self, meta_optim, data, model_cls, optim_it, unroll,
+    out_mul, k_obsrv=1, no_mask=False, writer=None, mode='train'):
     assert mode in ['train', 'valid', 'test']
+    if no_mask is True:
+      raise Exception("this module currently does NOT suport no_mask option")
     self.set_mode(mode)
 
     ############################################################################
-    #n_samples = 10
-    n_samples = args.k_obsrv
+    n_samples = k_obsrv
     """MSG: better postfix?"""
     analyze_model = False
     analyze_surface = False
-    #print('n_samples = {}'.format(n_samples))
     ############################################################################
 
     if analyze_surface:
@@ -91,6 +91,9 @@ class Optimizer(OptimizerBase):
         losses = []
         lips = []
 
+        assert n_samples > 0
+        """FIX LATER:
+        when n_samples == 0 it can behave like no_mask flag is on."""
         for i in range(n_samples):
           # step & mask genration
           mask = self.mask_gen.sample_mask()
@@ -136,10 +139,10 @@ class Optimizer(OptimizerBase):
         if mode == 'train':
           unroll_losses += total_test
           if iter % unroll == 0:
-            meta_optimizer.zero_grad()
+            meta_optim.zero_grad()
             unroll_losses.backward()
             nn.utils.clip_grad_value_(self.parameters(), 0.01)
-            meta_optimizer.step()
+            meta_optim.step()
             unroll_losses = 0
 
       with WalltimeChecker(walltime):
@@ -151,7 +154,7 @@ class Optimizer(OptimizerBase):
       if analyze_model:
         analyzers.model_analyzer(
           self, mode, model_train, params, model_cls, set_size, data, iter,
-          optim_it,analyze_mask=True, sample_mask=True, draw_loss=False)
+          optim_it, analyze_mask=True, sample_mask=True, draw_loss=False)
       if analyze_surface:
         analyzers.surface_analyzer(
           params, best_mask, step, writer, iter)

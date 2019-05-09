@@ -177,7 +177,6 @@ class StepGenerator(nn.Module):
     assert x.size(1) == self.output_sz
     out_1 = x[:, 0]  # * self.out_temp
     # step = out_1.repeat(n) * 0.1
-    import pdb; pdb.set_trace()
     step = out_1 * v_sqrt[:,-1].detach().repeat(n)
     # out_2 = x[:, 1]  # * self.out_temp # NOTE: normalizing?
     # # out_3 = x[:, 2]

@@ -59,8 +59,9 @@ class Optimizer(OptimizerBase):
       raise RuntimeError(f'Unknown rnn_cell type: {self.rnn_cell}')
     return self.output(out), OptimizerStates([s_0, s_1])
 
-  def meta_optimize(self, args, meta_optimizer, data, model_cls, optim_it, unroll,
-                    out_mul, writer, mode='train'):
+  def meta_optimize(self, meta_optim, data, model_cls, optim_it, unroll,
+    out_mul, k_obsrv=None, no_mask=None, writer=None, mode='train'):
+    """FIX LATER: do something about the dummy arguments."""
     assert mode in ['train', 'valid', 'test']
     self.set_mode(mode)
     use_indexer = False
@@ -127,10 +128,10 @@ class Optimizer(OptimizerBase):
         if mode == 'train':
           unroll_losses += test_nll
           if iter % unroll == 0:
-            meta_optimizer.zero_grad()
+            meta_optim.zero_grad()
             unroll_losses.backward()
             nn.utils.clip_grad_value_(self.parameters(), 0.01)
-            meta_optimizer.step()
+            meta_optim.step()
             unroll_losses = 0
 
       with WalltimeChecker(walltime):
