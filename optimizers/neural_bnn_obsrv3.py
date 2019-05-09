@@ -48,7 +48,7 @@ class Optimizer(OptimizerBase):
     ############################################################################
     n_samples = 10
     """MSG: better postfix?"""
-    analyze_model = True
+    analyze_model = False
     analyze_surface = False
     ############################################################################
 
@@ -148,8 +148,8 @@ class Optimizer(OptimizerBase):
       """Analyzers"""
       if analyze_model:
         analyzers.model_analyzer(
-          self, mode, model_train, params, model_cls, set_size, data, iter, optim_it,analyze_mask=True,
-          sample_mask=True, draw_loss=False)
+          self, mode, model_train, params, model_cls, set_size, data, iter,
+          optim_it,analyze_mask=True, sample_mask=True, draw_loss=False)
       if analyze_surface:
         analyzers.surface_analyzer(
           params, best_mask, step, writer, iter)

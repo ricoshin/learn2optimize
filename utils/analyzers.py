@@ -6,8 +6,8 @@ from utils.analyze_surface import (eval_gauss_var, eval_lipschitz,
 from utils.result import ResultDict
 
 
-def model_analyzer(optim, mode, model_train, params, model_cls, set_size,data, iter, optim_it,
-                   analyze_mask=False, sample_mask=False, draw_loss=False):
+def model_analyzer(optim, mode, model_train, params, model_cls, set_size,data,
+  iter, optim_it, analyze_mask=False, sample_mask=False, draw_loss=False):
 
   text_dir = 'analyze_model/analyze_mask'
   result_dir = 'analyze_model/drawloss'

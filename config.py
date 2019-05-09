@@ -49,8 +49,8 @@ _neural_optimizers_mnist = odict({
     # },
 
     'Proposed': {
-        'train_args': odict(n_epoch=5, n_train=2, n_valid=1, iter_train=5,
-                            iter_valid=25, unroll=2, lr=1.0),
+        'train_args': odict(n_epoch=50, n_train=20, n_valid=10, iter_train=500,
+                            iter_valid=2500, unroll=20, lr=1.0),
     }, # SGD: 1.0 / Adam: ?
 })
 
@@ -115,8 +115,8 @@ _normal_optimizers = odict({
 
 """NOTE: n_valid here is not for an actual inner-level held-out development set.
   It just means n sampling of mini-set from inner-test."""
-_common_test_args_debug = odict(n_test=5, iter_test=200)
-_common_test_args = odict(n_test=10, iter_test=50)
+_common_test_args_debug = odict(n_test=5, iter_test=10)
+_common_test_args = odict(n_test=10, iter_test=5000)
 # _common_test_args = odict(n_test=2, iter_test=5)
 
 ################################################################################
