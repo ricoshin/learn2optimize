@@ -485,12 +485,12 @@ def save_images(save_dir, image_writer, mean_over_mode, epoch, mode):
     x = mean_over_mode[key]
     mean = x.mean()
     category = 'meta_{}_outer/{}'.format(mode, key)
-    file_dir = os.path.join(save_dir, category)
-    if (mode == 'test') or (mode == 'normal'):
-      filename = 'test_iter{:02d}_({})_{}'.format(epoch, mode, key)
-    else:
-      filename = 'epoch{:02d}_({})_{}'.format(epoch, mode, key)
     if save_dir:
+      file_dir = os.path.join(save_dir, category)
+      if (mode == 'test') or (mode == 'normal'):
+        filename = 'test_iter{:02d}_({})_{}'.format(epoch, mode, key)
+      else:
+        filename = 'epoch{:02d}_({})_{}'.format(epoch, mode, key)
       filepath = os.path.join(file_dir, filename)
       if not os.path.exists(file_dir):
         os.makedirs(file_dir)
@@ -505,6 +505,8 @@ def save_images(save_dir, image_writer, mean_over_mode, epoch, mode):
     else:
       limit_y = False
     fig = plot_1D(x, limit_y, filepath, title)
-    #writer['main'].add_figure(title, fig, i)
-    image_writer.add_figure(category, fig, epoch)
+    
+    if image_writer is not None:
+      #writer['main'].add_figure(title, fig, i)
+      image_writer.add_figure(category, fig, epoch)
     plt.close()

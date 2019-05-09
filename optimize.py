@@ -6,7 +6,7 @@ import sys
 import numpy as np
 import torch
 import torch.optim as optim
-from models.mnist import MNISTData, MNISTModel
+from models.mnist import MNISTData, MNISTModel, MNISTModel2
 from models.model_helpers import ParamsIndexTracker
 from models.quadratic import QuadraticData, QuadraticModel
 from tensorboardX import SummaryWriter
@@ -100,6 +100,7 @@ def train_neural(name, save_dir, args, data_cls, model_cls, optim_module, n_epoc
   data = data_cls()
   best_params = None
   best_valid = 999999
+  best_converge = 999999
   result_outer = ResultDict()
   epoch_pbar = tqdm(range(n_epoch), 'epoch')
 
@@ -145,8 +146,10 @@ def train_neural(name, save_dir, args, data_cls, model_cls, optim_module, n_epoc
       utils.save_images(None, image_writer, mean_over_valid, i, 'valid')
     if lr_scheduling:
       #scheduler.step(result_mean['test_nll'])
-      if mean_over_valid['test_nll'][iter_valid-1] <0.2:
-        scheduler.step(mean_over_valid['test_nll'][iter_valid-1])
+      last_converge = mean_over_valid['test_nll'][iter_valid-1]
+      if last_converge < best_converge:
+        best_converge = last_converge
+        scheduler.step(last_converge)
     # Log TF-event: averaged valid loss
     mean_all = result_outer.mean()
     if save_dir:
@@ -239,7 +242,7 @@ def test_neural(name, save_dir, args, learned_params, data_cls, model_cls,
   return result_outer
 
 
-def test_normal(name, save_dir, data_cls, model_cls, optim_cls, optim_args,
+def test_normal(name, save_dir, args, data_cls, model_cls, optim_cls, optim_args,
                 n_test, iter_test):
   """function for test of static optimizers."""
   data_cls = _get_attr_by_name(data_cls)

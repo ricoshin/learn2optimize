@@ -17,8 +17,8 @@ _problems = {
 
 _neural_optimizers_debug = odict({
     'RNN-base': {
-        'train_args': odict(n_epoch=1, n_train=3, n_valid=3, iter_train=5,
-                            iter_valid=5, unroll=20, lr=0.01),
+        'train_args': odict(n_epoch=50, n_train=20, n_valid=1, iter_train=500,
+                            iter_valid=500, unroll=20, lr=0.01),
     },
     'Proposed': {
         'train_args': odict(n_epoch=1, n_train=3, n_valid=3, iter_train=5,
@@ -121,21 +121,21 @@ _common_test_args = odict(n_test=10, iter_test=5000)
 
 ################################################################################
 
-# train_optimizers = []
-train_optimizers = ['RNN-base']
-#train_optimizers = ['Proposed']
+#train_optimizers = []
+#train_optimizers = ['RNN-base']
+train_optimizers = ['Proposed']
 #train_optimizers = ['Proposed']
 # train_optimizers = ['RNN-base', 'Proposed', 'Proposed']
 # test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM', 'RNN-base', 'Proposed')
 # test_optimizers = ['ADAM']
-test_optimizers = ['RNN-base']
-#test_optimizers = ['Proposed']
+#test_optimizers = ['RNN-base']
+test_optimizers = ['Proposed']
 #test_optimizers = ['Proposed']
 # test_optimizers = ['RNN-base','Proposed', 'ADAM']
 # test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM', 'Proposed')
 # train_optimizers = ()
 # test_optimizers = ('SGD',)
-# test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM')
+#test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM')
 
 ################################################################################
 """config getters."""
@@ -231,7 +231,8 @@ def getConfig(args):
   _get_neural_optimizers(args.problem)
   _get_normal_optimizers(args.problem)
   _get_test_optimizers()
-  _get_args(args)
+  if train_optimizers:
+    _get_args(args)
   _sanity_check()
   return CONFIG
 

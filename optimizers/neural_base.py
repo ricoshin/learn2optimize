@@ -89,8 +89,11 @@ class Optimizer(OptimizerBase):
         model_train = C(model_cls(params=params.detach()))
         train_nll, train_acc = model_train(*data['in_train'].load())
         train_nll.backward()
-        assert model_train.params.flat.grad is not None
-        g = model_train.params.flat.grad
+        if model_train.params.flat.grad is not None:
+          g = model_train.params.flat.grad
+        else:
+          g = model_train._grad2params(model_train.params)
+        assert g is not None
 
         if use_indexer:
           # This indexer was originally for outer-level batch split
@@ -116,6 +119,7 @@ class Optimizer(OptimizerBase):
           updates, states = self(g.detach(), states)
           updates = params.new_from_flat(updates)
           params = params + updates * out_mul
+          #params = params - params.new_from_flat(g) * 0.1
 
       with WalltimeChecker(walltime if mode == 'train' else None):
         model_test = C(model_cls(params=params))
