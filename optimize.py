@@ -65,7 +65,7 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module,
   meta_optim = {'sgd': 'SGD', 'adam': 'Adam'}[meta_optim.lower()]
   lr_scheduling = True
 
-  if 'bnn' not in optim_module:
+  if 'obsrv' not in optim_module:
     wd = 1e-5
     print(f'meta optimizer: {meta_optim} / lr: {lr} / wd: {wd}\n')
     meta_optim = getattr(torch.optim, meta_optim)(
