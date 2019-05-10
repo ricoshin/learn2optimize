@@ -138,7 +138,7 @@ class FeatureGenerator(nn.Module):
 
 
 class StepGenerator(nn.Module):
-  def __init__(self, hidden_sz, drop_rate, out_temp=1e-2):
+  def __init__(self, hidden_sz, drop_rate=0.0, out_temp=1e-2):
     super().__init__()
     print(f'drop_rate: {drop_rate}')
     self.output_sz = 1  # log learning rate, update direction
@@ -167,7 +167,7 @@ class StepGenerator(nn.Module):
     assert x.size(1) == self.hidden_sz
 
     x = torch.cat([x] * n, dim=0)   # coordinate-wise feature
-    x = F.dropout(x, p=self.drop_rate if p is None else p)
+    #x = F.dropout(x, p=self.drop_rate if p is None else p)
 
     x = self.linear(x)
     """Submodule outputs:

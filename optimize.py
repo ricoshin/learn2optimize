@@ -124,18 +124,22 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module,
     # Meta-validation
     valid_pbar = tqdm(range(n_valid), 'outer_valid')
     result_outer = ResultDict()
+    result_final = ResultDict()
     for j in valid_pbar:
       valid_data = data.sample_meta_valid()
-      result_inner, _ = optimizer.meta_optimize(
+      result_inner, params = optimizer.meta_optimize(
         meta_optim, valid_data, model_cls, iter_valid, unroll,
         out_mul, k_obsrv, no_mask, writer, 'valid')
       result_outer.append(result_inner)
       result_mean = result_inner.mean()
+      final_model = C(model_cls(params=params))
+      result_final.append(final_inner_test(final_model, valid_data['in_test'], mode='valid'))
       log_pbar(result_mean ,valid_pbar)
     mean_over_valid = result_outer.mean(0)
+    final_mean_over_valid = result_final.mean(0)
+    #import pdb; pdb.set_trace()
     if lr_scheduling:
-      #scheduler.step(result_mean['test_nll'])
-      last_converge = mean_over_valid['test_nll'][iter_valid-1]
+      last_converge = final_mean_over_valid['loss_mean']
       if last_converge < best_converge:
         best_converge = last_converge
         scheduler.step(last_converge)
@@ -148,10 +152,11 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module,
       result_valid.append(
         result_inner.getitem(-1).sub('test_nll').w_postfix('final'))
       log_tf_event(writer, 'meta_valid_outer', mean_all, step)
+      log_tf_event(writer, 'meta_valid_outer', final_mean_over_valid, step)
       save_figure(name, save_dir, writer, mean_over_valid, i, 'valid')
-
+      
     # Save current snapshot
-    last_valid = mean_over_valid['test_nll'][iter_valid-1]
+    last_valid = final_mean_over_valid['loss_mean']
     if last_valid < best_valid:
       best_valid = last_valid
       optimizer.params.save(name, save_dir)
@@ -201,7 +206,7 @@ def test_neural(name, save_dir, learned_params, data_cls, model_cls,
     #   since there is no guarentee that it has reached the minimum
     #   w.r.t. the whole test set.
     model = C(model_cls(params=params))
-    result_final.append(final_inner_test(model, data['in_test']))
+    result_final.append(final_inner_test(model, data['in_test'], mode='test'))
     last_test = result_inner.mean()['test_nll']
     mean_test = result_outer.mean()['test_nll']
     if last_test < best_test:
@@ -279,7 +284,7 @@ def test_normal(name, save_dir, data_cls, model_cls, optim_cls, optim_args,
 
 
     result_outer.append(result_inner)
-    result_final.append(final_inner_test(model, data['in_test']))
+    result_final.append(final_inner_test(model, data['in_test'], mode='test'))
     # NOTE: we are not using best_test snapshot for final inner evaluation
     #   since there is no guarentee that it has reached the minimum
     #   w.r.t. the whole test set.
@@ -304,14 +309,14 @@ def test_normal(name, save_dir, data_cls, model_cls, optim_cls, optim_args,
 
   return result_outer
 
-def final_inner_test(model, data, batch_size=2000):
+def final_inner_test(model, data, mode='test', batch_size=2000):
   data_new = data.from_dataset(
     data.dataset, batch_size, rand_with_replace=False)
   loss_mean = []
   acc_mean = []
   sizes = []
   n_batch = range(len(data_new))
-  for x, y in tqdm(data_new.iterator, 'final_inner_test'):
+  for x, y in tqdm(data_new.iterator, 'final_inner_{}'.format(mode)):
     loss, acc = model(x, y)
     loss_mean.append(loss)
     acc_mean.append(acc)

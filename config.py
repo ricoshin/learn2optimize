@@ -21,7 +21,7 @@ _neural_optimizers_debug = odict({
                             iter_valid=500, unroll=20, lr=0.01),
     },
     'Proposed': {
-        'train_args': odict(n_epoch=1, n_train=3, n_valid=3, iter_train=5,
+        'train_args': odict(n_epoch=2, n_train=3, n_valid=3, iter_train=5,
                             iter_valid=5, unroll=20, lr=0.01),
     },
 })

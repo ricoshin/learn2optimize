@@ -34,8 +34,8 @@ class Optimizer(OptimizerBase):
     assert sb_mode in ['none', 'normal', 'unified']
     self.hidden_sz = hidden_sz
     self.sb_mode = sb_mode
-    self.feature_gen = FeatureGenerator(hidden_sz)
-    self.step_gen = StepGenerator(hidden_sz, drop_rate)
+    self.feature_gen = FeatureGenerator(hidden_sz, drop_rate=drop_rate)
+    self.step_gen = StepGenerator(hidden_sz)
     self.mask_gen = MaskGenerator(hidden_sz)
     self.params_tracker = ParamsIndexTracker(n_tracks=10)
 
