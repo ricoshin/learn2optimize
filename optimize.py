@@ -6,7 +6,8 @@ import sys
 import numpy as np
 import torch
 import torch.optim as optim
-from models.mnist import MNISTData, MNISTModel, MNISTModel2
+from models.mnist import MNISTData, MNISTModel
+from models.mnist2 import MNISTModel2
 from models.model_helpers import ParamsIndexTracker
 from models.quadratic import QuadraticData, QuadraticModel
 from tensorboardX import SummaryWriter
@@ -44,13 +45,15 @@ def log_tf_event(writer, tag, result_dict, step, walltime=None, w_name='main'):
   except:
     import pdb; pdb.set_trace()
 
+
 def train_neural(name, save_dir, data_cls, model_cls, optim_module,
   n_epoch=20, n_train=20, n_valid=100, iter_train=100, iter_valid=100,
   unroll=20, lr=0.001, preproc=False, out_mul=1.0, no_mask=False, k_obsrv=10,
   meta_optim='sgd'):
   """Function for meta-training and meta-validation of learned optimizers.
   """
-
+  print(f'data_cls: {data_cls}')
+  print(f'model_cls: {model_cls}')
   data_cls = _get_attr_by_name(data_cls)
   model_cls = _get_attr_by_name(model_cls)
   optim_cls = _get_optim_by_name(optim_module)
@@ -154,7 +157,7 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module,
       log_tf_event(writer, 'meta_valid_outer', mean_all, step)
       log_tf_event(writer, 'meta_valid_outer', final_mean_over_valid, step)
       save_figure(name, save_dir, writer, mean_over_valid, i, 'valid')
-      
+
     # Save current snapshot
     last_valid = final_mean_over_valid['loss_mean']
     if last_valid < best_valid:

@@ -187,13 +187,13 @@ class MNISTModel(nn.Module):
         params[f'mat_{i}'] = torch.randn(inp_size, layer_size) * 0.001
         # TODO: use a better initialization
         params[f'bias_{i}'] = torch.zeros(layer_size)
-        self._reset_parameters(params[f'mat_{i}'], params[f'bias_{i}'])
+        self.init_parameters(params[f'mat_{i}'], params[f'bias_{i}'])
         inp_size = layer_size
 
       params[f'mat_{n_layers}'] = torch.randn(
           inp_size, 10) * 0.001  # TODO:init
       params[f'bias_{n_layers}'] = torch.zeros(10)
-      self._reset_parameters(
+      self.init_parameters(
           params[f'mat_{n_layers}'], params[f'bias_{n_layers}'])
       self.params = ParamsFlattener(params)
       self.params.register_parameter_to(self)
@@ -241,11 +241,19 @@ class MNISTModel(nn.Module):
     std = {k: v.std(0) for k, v in self._activations.items()}
     return ParamsFlattener(std)
 
-  def _reset_parameters(self, mat, bias):
-    nn.init.kaiming_uniform_(mat, a=math.sqrt(5))
-    fan_in, _ = nn.init._calculate_fan_in_and_fan_out(mat)
-    bound = 1 / math.sqrt(fan_in)
-    nn.init.uniform_(bias, -bound, bound)
+  def init_parameters(self, mat, bias, type='simple'):
+    assert type in ['kaiming_uniform', 'simple']
+    if type == 'kaiming_uniform':
+      nn.init.kaiming_uniform_(mat, a=math.sqrt(5))
+      fan_in, _ = nn.init._calculate_fan_in_and_fan_out(mat)
+      bound = 1 / math.sqrt(fan_in)
+      nn.init.uniform_(bias, -bound, bound)
+    elif type == 'simple':
+      mat.normal_(0., 0.001)
+      bias.fill_(0.)
+    else:
+      raise Exception(f'Unknown type: {type}')
+
 
   def forward(self, inp, out=None):
     inp = C(inp.view(inp.size(0), self.input_size))
@@ -286,163 +294,6 @@ class MNISTModel(nn.Module):
       loss = None
       acc = None
 
-    return loss, acc
-
-
-class MNISTModel2(nn.Module):
-  def __init__(self, input_size=28 * 28, layer_size=500, hidden=1, num_classes=10,
-              sb_mode='none', params=None):
-    super().__init__()
-    self.input_size = input_size
-    self.layer_size = layer_size
-    self.hidden = hidden
-    self.num_classes = num_classes
-    self.sb_mode = sb_mode
-    self.mode = 'linear'
-    if self.mode == 'linear':
-      layers = []
-      for i in range(hidden):
-        if i == 0:
-          layers.append(nn.Linear(input_size, layer_size, bias=True))
-        else:
-          layers.append(nn.Linear(layer_size, layer_size, bias=True))
-        layers.append(nn.ReLU())
-      layers.append(nn.Linear(layer_size, num_classes, bias=True))
-      self.layer = nn.Sequential(*layers).cuda()
-      #print(self.layer)
-    else:
-      self.layer = nn.Sequential(
-              nn.Conv2d(1, 32, 5, 1, 1),
-              nn.MaxPool2d(2, 2),
-              nn.ReLU(True),
-              #nn.BatchNorm2d(32),
-
-              nn.Conv2d(32, 64, 3,  1, 1),
-              nn.ReLU(True),
-              #nn.BatchNorm2d(64),
-
-              nn.Conv2d(64, 64, 3,  1, 1),
-              nn.MaxPool2d(2, 2),
-              nn.ReLU(True),
-              #nn.BatchNorm2d(64),
-
-              nn.Conv2d(64, 128, 3, 1, 1),
-              nn.ReLU(True),
-              #nn.BatchNorm2d(128),
-              nn.Conv2d(128, 10, 1),
-              nn.AvgPool2d(6, 6)
-      ).cuda()
-
-    self.n_layers = len(self.layer)
-    if params is not None:
-      if not isinstance(params, ParamsFlattener):
-        raise TypeError("params argumennts has to be "
-                      "an instance of ParamsFlattener!")
-      self.params = params
-      param_index = 0
-      for layer_index in range(self.n_layers):
-        if isinstance(self.layer[layer_index], nn.Linear):
-          #import pdb; pdb.set_trace()
-          self.layer[layer_index].weight  = params.unflat[f'mat_{param_index}']
-          self.layer[layer_index].bias = params.unflat[f'bias_{param_index}']
-          param_index += 1
-    else:
-      self.layer2params()
-
-    self.sb_linear = {}
-    self._activations = {}
-    self.nonlinear = nn.Sigmoid()
-    self.loss = nn.NLLLoss()
-  def layer2params(self):
-    params = {}
-    param_index = 0
-    for layer_index in range(self.n_layers):
-      if isinstance(self.layer[layer_index], nn.Linear) or isinstance(self.layer[layer_index], nn.Conv2d):
-        params[f'mat_{param_index}'] = self.layer[layer_index].weight
-        params[f'bias_{param_index}'] = self.layer[layer_index].bias
-        self._reset_parameters(params[f'mat_{param_index}'], params[f'bias_{param_index}'])
-        self.layer[layer_index].weight.data = params[f'mat_{param_index}']
-        self.layer[layer_index].bias.data = params[f'bias_{param_index}']
-        param_index += 1
-      #import pdb; pdb.set_trace()          
-
-    self.params = ParamsFlattener(params)
-    self.params.register_parameter_to(self)
-  def apply_backprop_mask(self, mask, drop_mode='no_drop'):
-    if self.sb_linear is None:
-      raise RuntimeError("To apply sparse backprop mak, model has to be "
-                         "feed-forwared first having sparse mode normal or unified!")
-    assert isinstance(mask, dict)
-    assert drop_mode in ['no_drop', 'soft_drop', 'hard_drop']
-    for k, v in self.sb_linear.items():
-      #act_k = "_".join(['act', k.split('_')[1]])
-      v.mask_backprop(mask[k], drop_mode)
-
-  @property
-  def activations(self):
-    if len(self._activations) == 0:
-      raise RuntimeError("model has to be feed-forwarded first!")
-    else:
-      return ParamsFlattener(self._activations)
-
-  @property
-  def activation_mean(self):
-    mean = {k: v.mean(0) for k, v in self._activations.items()}
-    return ParamsFlattener(mean)
-
-  @property
-  def activation_std(self):
-    std = {k: v.std(0) for k, v in self._activations.items()}
-    return ParamsFlattener(std)
-
-  def _reset_parameters(self, mat, bias):
-    nn.init.kaiming_uniform_(mat, a=math.sqrt(5))
-    fan_in, _ = nn.init._calculate_fan_in_and_fan_out(mat)
-    bound = 1 / math.sqrt(fan_in)
-    nn.init.uniform_(bias, -bound, bound)
-  def _grad2params(self, params):
-    params = {}
-    param_index = 0
-    for layer_index in range(self.n_layers):
-      if isinstance(self.layer[layer_index], nn.Linear) or isinstance(self.layer[layer_index], nn.Conv2d):
-        self.params.unflat[f'mat_{param_index}'].grad = self.layer[layer_index].weight.grad
-        self.params.unflat[f'bias_{param_index}'].grad = self.layer[layer_index].bias.grad
-        param_index += 1        
-    return self.params.flat.grad
-
-  def forward(self, inp, out=None):
-    if self.mode == 'linear':
-      inp = C(inp.view(inp.size(0), self.input_size))
-    else:
-      inp = C(inp)
-    #import pdb; pdb.set_trace()
-    """
-    activation_index = 0
-    for layer_index in range(self.n_layers):
-      inp = self.layer[layer_index](inp)
-      if isinstance(self.layer[layer_index], nn.Linear) or isinstance(self.layer[layer_index], nn.Conv2d):
-        self._activations[f'layer_{activation_index}'] = inp
-        activation_index += 1
-    """
-    #import pdb; pdb.set_trace()
-    """
-    for layer_index in range(self.n_layers):
-      if layer_index == self.n_layers - 1:
-        inp = inp.view(inp.size(0), -1)
-        #import pdb; pdb.set_trace()
-      #print(layer_index, inp.size())
-      inp = self.layer[layer_index](inp)    
-    """
-    
-    inp = self.layer(inp)
-    inp = F.log_softmax(inp, dim=1).squeeze()
-    if out is not None:
-      out = C(out)
-      loss = self.loss(inp, out)
-      acc = (inp.argmax(dim=1) == out).float().mean()
-    else:
-      loss = None
-      acc = None
     return loss, acc
 
 
