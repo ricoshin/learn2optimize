@@ -84,7 +84,7 @@ class Optimizer(OptimizerBase):
           kld = self.mask_gen(feature, size, debug=debug_1)
           test_kld = kld / data['in_test'].full_size  # * 0.00005
           ## kl annealing function 'linear' / 'logistic' / None
-          test_kld2 = test_kld * kl_anneal_function(anneal_function='logistic', step=iter, k=0.0025, x0=optim_it)
+          test_kld2 = test_kld * kl_anneal_function(anneal_function=None, step=iter, k=0.0025, x0=optim_it)
           mask = self.mask_gen.sample_mask()
           mask = ParamsFlattener(mask)
           mask_layout = mask.expand_as(params)
