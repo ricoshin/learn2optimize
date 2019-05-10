@@ -22,6 +22,7 @@ from utils.result import ResultDict
 from utils.timer import Walltime, WalltimeChecker
 from utils.torchviz import make_dot
 from utils import analyzers
+from utils import kl_anneal
 
 C = utils.getCudaManager('default')
 sigint = utils.getSignalCatcher('SIGINT')
@@ -82,6 +83,8 @@ class Optimizer(OptimizerBase):
         if not no_mask:
           kld = self.mask_gen(feature, size, debug=debug_1)
           test_kld = kld / data['in_test'].full_size  # * 0.00005
+          ## kl annealing function 'linear' / 'logistic' / None
+          test_kld2 = test_kld * kl_anneal_function(anneal_function=None, step=iter, k=0.0025, x0=optim_it)
           mask = self.mask_gen.sample_mask()
           mask = ParamsFlattener(mask)
           mask_layout = mask.expand_as(params)
@@ -96,7 +99,7 @@ class Optimizer(OptimizerBase):
         if debug_2: pdb.set_trace()
 
         if mode == 'train':
-          unroll_losses += test_nll + test_kld
+          unroll_losses += test_nll + test_kld2
           if iter % unroll == 0:
             meta_optim.zero_grad()
             unroll_losses.backward()
@@ -132,3 +135,4 @@ class Optimizer(OptimizerBase):
       log_pbar(result, iter_pbar)
 
     return result_dict, params
+

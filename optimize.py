@@ -145,7 +145,8 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module,
       last_converge = final_mean_over_valid['loss_mean']
       if last_converge < best_converge:
         best_converge = last_converge
-      scheduler.step(last_converge)
+      if last_converge < 0.5:
+        scheduler.step(last_converge)
     # Log TF-event: averaged valid loss
     mean_all = result_outer.mean()
     if save_dir:
