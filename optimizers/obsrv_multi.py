@@ -23,6 +23,8 @@ from utils.result import ResultDict
 from utils.timer import Walltime, WalltimeChecker
 from utils.torchviz import make_dot
 from utils import analyzers
+from utils.kl_anneal import kl_anneal_function
+
 
 C = utils.getCudaManager('default')
 sigint = utils.getSignalCatcher('SIGINT')
