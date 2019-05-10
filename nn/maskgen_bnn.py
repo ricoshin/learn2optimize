@@ -268,59 +268,64 @@ class MaskGenerator(nn.Module):
       blocks.append(torch.cat(blocks_sub, dim=1))
     return torch.cat(blocks, dim=0)
 
-  def forward(self, x, size, n=1, debug=False):
+  def forward(self, x, size, n=1, debug=False, exclude_bias=False):
     """
     Args:
       x (tensor): representation for step & mask generation (batch x hidden_sz)
       size (dict): A dict mapping names of weight matrices to their
         torch.Size(). For example:
 
-      {'mat_0': torch.Size([784, 500]), 'bias_0': torch.Size([500]),
-       'mat_1': torch.Size([500, 10]), 'bias_1': torch.Size([10])}
+      {'mat_0': torch.Size([500, 784]), 'bias_0': torch.Size([500]),
+       'mat_1': torch.Size([10, 500]), 'bias_1': torch.Size([10])}
     """
     assert isinstance(size, dict)
-    assert x.size(1) == self.hidden_sz
+    assert x.size(1) == self.hidden_sz  # if hidden_sz == 32
 
     """Set-based feature averaging (Permutation invariant)"""
     sizes = [s for s in size.values()]
-    # [torch.Size([784, 500]), torch.Size([500]),
-    #  torch.Size([500, 10]), torch.Size([10])]
+    # [torch.Size([500, 784]), torch.Size([500]),
+    #  torch.Size([10, 500]), torch.Size([10])]
     split_sizes = [np.prod(s) for s in size.values()] * n
     # [392000, 500, 5000, 10]
-    # split_size = [sum(offsets[:i]) for i in range(len(offsets))]
     x_set = torch.split(x, split_sizes, dim=0)
-    # mean = torch.cat([s.mean(0).expand_as(s) for s in sections], dim=0)
-    x_set = [x.view(*s, self.hidden_sz) for x, s in zip(x_set, sizes * n)]
+    x_set = [x.view(self.hidden_sz, s[0], -1) for x, s in zip(x_set, sizes * n)]
     x_set_sizes = [x_set[i].size() for i in range(len(x_set))]
-    # [torch.Size([784, 500, 32]), torch.Size([500, 32]),
-    #  torch.Size([500, 10, 32]), torch.Size([10, 32])]
+    # [torch.Size([32, 500, 784]), torch.Size([32, 500]),
+    #  torch.Size([32, 10, 500]), torch.Size([32, 10])]
+    if not exclude_bias:
+      # unsqueeze bias to match dim
+      max_d = max([len(s) for s in x_set_sizes])  # +1: hidden dimension added
+      assert all([(max_d - len(s)) <= 1 for s in x_set_sizes])
+      x_set = [x.unsqueeze_(-1) if len(x.size()) < max_d else x for x in x_set]
+      # [torch.Size([32, 500, 784]), torch.Size([32, 500, 1]),
+      #  torch.Size([32, 10, 500]), torch.Size([32, 10, 1])]
 
-    # unsqueeze bias to match dim
-    max_dim = max([len(s) for s in x_set_sizes])  # +1: hidden dimension added
-    assert all([(max_dim - len(s)) <= 1 for s in x_set_sizes])
-    x_set = [x.unsqueeze_(0) if len(x.size()) < max_dim else x for x in x_set]
-    # [torch.Size([784, 500, 32]), torch.Size([1, 500, 32]),
-    #  torch.Size([500, 10, 32]), torch.Size([1, 10, 32])]
+      # concatenate bias hidden with weight hidden in the same layer
+      #   bias will be dropped with its corresponding weight column
+      #   (a) group the parameters layerwisely
+      keys = [n for n in size.keys()]
 
-    # concatenate bias hidden with weight hidden in the same layer
-    # bias will be dropped with its corresponding weight column
-    #   (a) group the parameters layerwisely
-    keys = [n for n in size.keys()]
-    names = []
-    for i in range(n):
-      names += [k + '_' + str(i) for k in keys]
-    # names = [str(i) + '_' + n for n in names] *
-    # ['mat_0', 'bias_0', 'mat_1', 'bias_1']
-    set = odict()
-    for name, x in zip(names, x_set):
-      id = '_'.join(name.split('_')[1:])
-      if id in set:
-        set[id].append(x)
-      else:
-        set[id] = [x]
-    #   (b) compute mean over the set
-    set = {k: torch.cat(v, dim=0).mean(0) for k, v in set.items()}
-    x_set = torch.cat([s for s in set.values()], dim=0)
+      # names = [str(i) + '_' + n for n in names] *
+      # ['mat_0', 'bias_0', 'mat_1', 'bias_1']
+      set = odict()
+      for key, x in zip(keys, x_set):
+        id = key.split('_')[1]
+        if id in set:
+          set[id].append(x)
+        else:
+          set[id] = [x]
+
+      #   (b) compute mean over the set
+      set = {k: torch.cat(v, dim=-1).mean(-1) for k, v in set.items()}
+    else:
+      set = {}
+      for k, v in size.items():
+        if k.split('_')[0] == 'mat':
+          set[k.split('_')[1]] = v
+
+
+    x_set = torch.cat([s for s in set.values()], dim=1).t()
+
     # non-linearity
     x_set = self.nonlinear(x_set)
     # x_set: [total n of set(channels) x hidden_sz]
@@ -385,10 +390,11 @@ class MaskGenerator(nn.Module):
     self.a = F.softplus(out[:, 0].clamp(min=-10.))
     self.b = F.softplus(out[:, 1].clamp(min=-10., max=50.))
     self.n = [k for k in set.keys()]
-    keys = [k for k in set.keys() if k.split('_')[1] == '0']
-    self.s = [set[k].size(0) for k in keys]
+    keys = [k for k in set.keys() if k == '0']
+    self.s = [v.size(1) for v in set.values()]
+
     kld = self.beta_bern.compute_kld(self.a, self.b)
-  #
+
     return kld
   #
   #

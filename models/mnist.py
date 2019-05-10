@@ -241,9 +241,9 @@ class MNISTModel(nn.Module):
     std = {k: v.std(0) for k, v in self._activations.items()}
     return ParamsFlattener(std)
 
-  def init_parameters(self, mat, bias, type='simple'):
-    assert type in ['kaiming_uniform', 'simple']
-    if type == 'kaiming_uniform':
+  def init_parameters(self, mat, bias, type='he_uniform'):
+    assert type in ['he_uniform', 'simple']
+    if type == 'he_uniform':
       nn.init.kaiming_uniform_(mat, a=math.sqrt(5))
       fan_in, _ = nn.init._calculate_fan_in_and_fan_out(mat)
       bound = 1 / math.sqrt(fan_in)

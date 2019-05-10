@@ -60,7 +60,6 @@ class Optimizer(OptimizerBase):
     self.step_gen.new()
     sparse_r = {}  # sparsity
     iter_pbar = tqdm(range(1, optim_it + 1), 'Inner_loop')
-    set_size = {'layer_0': 500, 'layer_1': 10}  # NOTE: make it smarter
 
     for iter in iter_pbar:
       debug_1 = sigint.is_active(iter == 1 or iter % 10 == 0)
@@ -114,7 +113,7 @@ class Optimizer(OptimizerBase):
       ##########################################################################
       if analyze_model:
         analyzers.model_analyzer(
-          self, mode, model_train, params, model_cls, set_size, data, iter,
+          self, mode, model_train, params, model_cls, mask.tsize(0), data, iter,
           optim_it, analyze_mask=True, sample_mask=True, draw_loss=False)
       if analyze_surface:
         analyzers.surface_analyzer(
@@ -135,4 +134,3 @@ class Optimizer(OptimizerBase):
       log_pbar(result, iter_pbar)
 
     return result_dict, params
-

@@ -576,8 +576,16 @@ class ParamsFlattener(object):
       out_dict = {}
       for i, (k_other, v_other) in enumerate(other.items()):
         k_self = key_translated[i]
+        size_diff = len(v_other.size()) - len(self.unflat[k_self].size())
         if k_self: # mat (copy the mask pattern along the column axis)
-          out_dict[k_other] = self.unflat[k_self].squeeze(0).expand_as(v_other)
+          if size_diff > 0:
+            v_self = self.unflat[k_self].view(-1, *((1,) * size_diff))
+          elif size_diff == 0:
+            v_self = self.unflat[k_self]
+          else:
+            import pdb; pdb.set_trace()
+            # raise Exception()
+          out_dict[k_other] = v_self.expand_as(v_other)
         else: # bias (no need to drop - fill ones)
           # NOTE: only when key of bias is None
           out_dict[k_other] = v_other.new_ones(v_other.size())

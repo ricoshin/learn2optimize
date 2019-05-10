@@ -16,8 +16,8 @@ C = utils.getCudaManager('default')
 
 
 class MNISTModel2(nn.Module):
-  def __init__(self, input_sz=28 * 28, hidden_sz=500, n_layers=1,
-    n_classes=10, params=None, type='linear'):
+  def __init__(self, input_sz=28 * 28, hidden_sz=500, n_layers=3,
+    n_classes=10, params=None, type='cnn'):
     super().__init__()
     assert type in ['linear', 'cnn']
     self.input_sz = input_sz
@@ -35,12 +35,15 @@ class MNISTModel2(nn.Module):
           self.layers.append(nn.ReLU())
     elif self.type == 'cnn':
       n_channel = 32
+      # 1, 32, 64, 128, ... , 10
       for i in range(n_layers + 1):
-        self.layers.append(nn.Conv2d(1, n_channel * (i + 1), 3, 1, 1))
+        in_ = n_channel * i if i > 0 else 1
+        out_ = n_channel * (i + 1) if i < n_layers else 10
+        self.layers.append(nn.Conv2d(in_, out_, 3, 1, 1))
         if i % 2 == 0 and not i == n_layers:
           self.layers.append(nn.MaxPool2d(2, 2))
         if not i == n_layers:
-          self.layers.append(ReLU(True))
+          self.layers.append(nn.ReLU(True))
         else:
           self.layers.append(nn.AvgPool2d(6, 6))
     # self.reset_variables()
@@ -82,7 +85,7 @@ class MNISTModel2(nn.Module):
         1. there is no need to use diffrent names for the same matrices.
         2. t() operation is unneccessary."""
         layer.weight.requires_grad_(False).copy_(
-          params.unflat['mat_' + str(j)].t())
+          params.unflat['mat_' + str(j)])
         if layer.bias is not None:
           layer.bias.requires_grad_(False).copy_(
             params.unflat['bias_' + str(j)])
@@ -96,21 +99,11 @@ class MNISTModel2(nn.Module):
       if layer.__class__.__name__ in ['Linear', 'Conv2d']:
         """FIX LATER: there is no need to use diffrent names for the same
         matrices. (weight, mat)"""
-        params['mat_' + str(j)] = layer.weight.data.t()
+        params['mat_' + str(j)] = layer.weight.data.clone()
         if layer.bias is not None:
-          params['bias_' + str(j)] = layer.bias.data
+          params['bias_' + str(j)] = layer.bias.data.clone()
         j += 1
     return ParamsFlattener(params)
-
-  def apply_backprop_mask(self, mask, drop_mode='no_drop'):
-    if self.sb_linear is None:
-      raise RuntimeError("To apply sparse backprop mak, model has to be "
-                         "feed-forwared first having sparse mode normal or unified!")
-    assert isinstance(mask, dict)
-    assert drop_mode in ['no_drop', 'soft_drop', 'hard_drop']
-    for k, v in self.sb_linear.items():
-      #act_k = "_".join(['act', k.split('_')[1]])
-      v.mask_backprop(mask[k], drop_mode)
 
 
   def forward(self, inp, out=None):

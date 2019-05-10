@@ -221,7 +221,7 @@ class ReduceLROnPlateau(torch.optim.lr_scheduler.ReduceLROnPlateau):
       if old_lr - new_lr > self.eps:
         param_group['lr'] = new_lr
         if self.verbose:
-          print('\n\n\n\nepoch {:3d}: reducing learning rate'
+          print('\n\n\nepoch {:3d}: reducing learning rate'
                 ' of group {} to {:.8f}.'.format(epoch, i, new_lr))
 
 

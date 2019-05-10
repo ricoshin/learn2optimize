@@ -8,9 +8,9 @@ import torch
 
 _problems = {
     #'debug': odict(data_cls='QuadraticData', model_cls='QuadraticModel'),
-    'debug': odict(data_cls='MNISTData', model_cls='MNISTModel'),
+    'debug': odict(data_cls='MNISTData', model_cls='MNISTModel2'),
     'quadratic': odict(data_cls='QuadraticData', model_cls='QuadraticModel'),
-    'mnist': odict(data_cls='MNISTData', model_cls='MNISTModel'),
+    'mnist': odict(data_cls='MNISTData', model_cls='MNISTModel2'),
 }
 
 ################################################################################
