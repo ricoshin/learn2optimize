@@ -79,17 +79,19 @@ class Optimizer(OptimizerBase):
         step = params.new_from_flat(step[0])
         size = params.size().unflat()
 
-        if not no_mask:
+        if no_mask:
+          params = params + step
+        else:
           kld = self.mask_gen(feature, size, debug=debug_1)
           test_kld = kld / data['in_test'].full_size  # * 0.00005
           ## kl annealing function 'linear' / 'logistic' / None
-          test_kld2 = test_kld * kl_anneal_function(anneal_function=None, step=iter, k=0.0025, x0=optim_it)
+          test_kld2 = test_kld * kl_anneal_function(
+            anneal_function=None, step=iter, k=0.0025, x0=optim_it)
           mask = self.mask_gen.sample_mask()
           mask = ParamsFlattener(mask)
           mask_layout = mask.expand_as(params)
-
-        # update
-        params = params + step
+          step_masked = step * mask_layout
+          params = params + step_masked
 
       with WalltimeChecker(walltime if mode == 'train' else None):
         model_test = C(model_cls(params=params))
@@ -125,11 +127,14 @@ class Optimizer(OptimizerBase):
           test_nll=test_nll.tolist(),
           train_acc=train_acc.tolist(),
           test_acc=test_acc.tolist(),
-          test_kld=test_kld.tolist(),
+          test_kld=test_kld2.tolist(),
           walltime=walltime.time,
       )
       if no_mask is False:
-        result.update(**mask.sparsity(0.5))
+        result.update(
+          **mask.sparsity(overall=True),
+          **mask.sparsity(overall=False),
+        )
       result_dict.append(result)
       log_pbar(result, iter_pbar)
 

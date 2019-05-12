@@ -507,14 +507,33 @@ class ParamsFlattener(object):
     func = lambda t: t.size(*args, **kwargs)
     return self.apply_func(func, inplace=False, as_dict=True)
 
-  def sparsity(self, threshold=0.5, new_prefix='sp', as_dict=True):
-    sparsity = (self > threshold).sum().float() / self.tsize(0)
-    convert_key = lambda k: new_prefix + k.split('_')[1]
-    sparsity = sparsity.apply_func_to_keys(convert_key)
-    if as_dict:
-      return sparsity.unflat
+  def get_by_substr(self, string):
+    return ParamsFlattener(
+      {k: v for k, v in self.unflat.items() if string in k})
+
+  def channels(self):
+    """Returns sizes of channel dimension as a list in sequence of stacked
+    layers. Will be used for module initialization in sparse model."""
+    return [v for v in self.get_by_substr('mat').tsize(0).values()][:-1]
+
+  def sparsity(self, threshold=0.5, overall=False, new_prefix='sp',
+    as_dict=True):
+    if overall:
+      on = sum([v for v in (self > threshold).sum().float().unflat.values()])
+      all = sum([v for v in self.tsize(0).values()])
+      sparsity = {new_prefix + '_' + 'overall': on / all}
+      if not as_dict:
+        sparsity = ParamsFlattener(sparsity)
     else:
-      return sparsity
+      sparsity = (self > threshold).sum().float() / self.tsize(0)
+      convert_key = lambda k: new_prefix + k.split('_')[1]
+      sparsity = sparsity.apply_func_to_keys(convert_key)
+      if as_dict:
+        sparsity = sparsity.unflat
+    return sparsity
+
+  def is_valid_sparsity(self, threshold=0.5):
+    return all([v > 0 for v in self.sparsity(overall=False).values()])
 
   def scatter_float_(self, dim, index, float_):
     func = lambda inp, id: inp.scatter_(dim, id, float_)
@@ -659,7 +678,7 @@ class ParamsFlattener(object):
         # out[p_key] = p.index_select(-1, m)
         if int(p_layer) < last_layer:
           m = mask[m_key].squeeze().nonzero().squeeze()
-          out[p_key] = p.index_select(-1, m)
+          out[p_key] = p.index_select(0, m)
           # import pdb; pdb.set_trace()
         else:  # do not prune the last units
           out[p_key] = p
@@ -668,9 +687,9 @@ class ParamsFlattener(object):
           prev_m_key = key_trans_func(p_name + '_' + str(int(p_layer) - 1))
           m = mask[prev_m_key].squeeze().nonzero().squeeze()
           if p_key in out.keys():
-            out[p_key] = out[p_key].index_select(0, m)
+            out[p_key] = out[p_key].index_select(1, m)
           else:
-            out[p_key] = p.index_select(0, m)
+            out[p_key] = p.index_select(1, m)
       return out
 
     return self.apply_func_(func, mask)

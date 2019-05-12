@@ -92,20 +92,26 @@ class Optimizer(OptimizerBase):
 
         losses = []
         lips = []
-
+        valid_mask_patience = 100
         assert n_samples > 0
         """FIX LATER:
         when n_samples == 0 it can behave like no_mask flag is on."""
         for i in range(n_samples):
           # step & mask genration
-          mask = self.mask_gen.sample_mask()
+          for j in range(valid_mask_patience):
+            mask = self.mask_gen.sample_mask()
+            mask = ParamsFlattener(mask)
+            if mask.is_valid_sparsity():
+              if j > 0:
+                print(f'\n\n[!]Resampled {j + 1} times to get valid mask!')
+              break
+            if j == valid_mask_patience - 1:
+              raise Exception("[!]Could not sample valid mask for "
+                              f"{j+1} trials.")
+
           step_out = self.step_gen(feature, v_sqrt, debug=debug_1)
           step = params.new_from_flat(step_out[0])
 
-          # prunning
-          if debug_2: pdb.set_trace()
-
-          mask = ParamsFlattener(mask)
           mask_layout = mask.expand_as(params)
           step_sparse = step * mask_layout
           params_sparse = params + step_sparse
@@ -118,13 +124,9 @@ class Optimizer(OptimizerBase):
           sparse_model = C(model_cls(params=params_pruned.detach()))
           loss, _ = sparse_model(*data['in_train'].load())
 
-          try:
-            if (loss < best_loss) or i == 0:
-              best_loss = loss
-              best_params = params_sparse
-              best_pruned = params_pruned
-              best_mask = mask
-          except:
+
+          if (loss < best_loss) or i == 0:
+            best_loss = loss
             best_params = params_sparse
             best_pruned = params_pruned
             best_mask = mask
@@ -171,7 +173,8 @@ class Optimizer(OptimizerBase):
           test_acc=test_acc.tolist(),
           test_kld=test_kld.tolist(),
           walltime=walltime.time,
-          **best_mask.sparsity(0.5),
+          **best_mask.sparsity(overall=True),
+          **best_mask.sparsity(overall=False),
       )
       result_dict.append(result)
       log_pbar(result, iter_pbar)

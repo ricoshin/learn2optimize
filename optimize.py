@@ -31,10 +31,9 @@ def _get_optim_by_name(name):
   return importlib.import_module("optimizers." + name).Optimizer
 
 
-def log_pbar(result_dict, pbar, keys=None):
-  desc = [f'{k}: {v:3.3f}' for k, v in result_dict.items()\
-    if keys is None or k not in keys]
-  pbar.set_description(f"{pbar.desc.split(' ')[0]} [ {' / '.join(desc)} ]")
+def log_pbar(result_dict, pbar, nitem_max=7):
+  desc = [f'{k}: {v:3.4f}' for k, v in result_dict.items()][:nitem_max]
+  pbar.set_description(f"{pbar.desc.split(' ')[0]} [{' | '.join(desc)}]")
 
 
 def log_tf_event(writer, tag, result_dict, step, walltime=None, w_name='main'):
