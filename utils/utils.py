@@ -205,7 +205,10 @@ class TFWriter(dict):
   def __init__(self, *args):
     assert all([isinstance(arg, str) for arg in args])
     self.top_dir = os.path.join(*args)
-    super().__init__(main=SummaryWriter(self.top_dir))
+    super().__init__(
+      main=SummaryWriter(self.top_dir),
+      figure=SummaryWriter(os.path.join(self.top_dir, 'figure')),
+    )
 
   def new_subdirs(self, *args):
     assert all([isinstance(arg, str) for arg in args])
@@ -507,5 +510,5 @@ def save_figure(name, save_dir, writer, mean_over_mode, epoch, mode):
       limit_y = False
     fig = plot_1D(x, limit_y, filepath, title)
     if writer is not None:
-      writer['main'].add_figure(category, fig, epoch)
+      writer['figure'].add_figure(category, fig, epoch)
     plt.close()
