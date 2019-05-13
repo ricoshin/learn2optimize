@@ -9,7 +9,7 @@ class Truncation(object):
 
   def __init__(self, initial_value, mode='min', factor=1.5, patience=10,
                verbose=False, threshold=1e-4, threshold_mode='rel',
-               cooldown=5, max_len=500, eps=1e-8):
+               cooldown=5, max_len=50, eps=1e-8):
 
     if factor <= 1.0:
       raise ValueError('Factor should be > 1.0.')

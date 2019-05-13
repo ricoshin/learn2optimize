@@ -32,6 +32,11 @@ def _get_optim_by_name(name):
   return importlib.import_module("optimizers." + name).Optimizer
 
 
+def get_lr(optim):
+  i_groups = enumerate(optim.param_groups)
+  return {'meta_lr_' + str(i): g['lr'] for i, g in i_groups}
+
+
 def log_pbar(result_dict, pbar, nitem_max=7):
   try:
     desc = [f'{k}: {v:3.4f}' for k, v in result_dict.items()][:nitem_max]
@@ -58,7 +63,8 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module,
 
   # Options
   lr_scheduling = True  # learning rate scheduling
-  tr_scheduling = True  # truncation scheduling
+  tr_scheduling = False  # truncation scheduling
+  seperate_lr = False
 
   print(f'data_cls: {data_cls}')
   print(f'model_cls: {model_cls}')
@@ -76,7 +82,7 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module,
   meta_optim = {'sgd': 'SGD', 'adam': 'Adam'}[meta_optim.lower()]
 
 
-  if 'obsrv' not in optim_module:
+  if seperate_lr:
     wd = 1e-5
     print(f'meta optimizer: {meta_optim} / lr: {lr} / wd: {wd}\n')
     meta_optim = getattr(torch.optim, meta_optim)(
@@ -102,9 +108,8 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module,
     lr_scheduler = ReduceLROnPlateau(
       meta_optim, mode='min', factor=0.5, patience=1, verbose=True)
 
-  if tr_scheduling:
-    tr_scheduler = Truncation(
-      unroll, mode='min', factor=1.5, patience=1, verbose=True)
+  tr_scheduler = Truncation(
+    unroll, mode='min', factor=1.5, patience=1, max_len=50, verbose=True)
 
   data = data_cls()
   best_params = None
@@ -122,7 +127,7 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module,
     for j in train_pbar:
       train_data = data.sample_meta_train()
       result, _ = optimizer.meta_optimize(
-        meta_optim, train_data, model_cls, iter_train, unroll,
+        meta_optim, train_data, model_cls, iter_train, tr_scheduler.len,
         out_mul, k_obsrv, no_mask, writer,'train')
       result_mean = result.mean()
       log_pbar(result_mean, train_pbar)
@@ -144,7 +149,9 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module,
       result, params = optimizer.meta_optimize(
         meta_optim, valid_data, model_cls, iter_valid, unroll,
         out_mul, k_obsrv, no_mask, writer, 'valid')
-      result_all.append(result)
+
+      result_all.append(**result, **get_lr(meta_optim),
+        trunc_len=tr_scheduler.len)
       result_final.append(final_inner_test(
         C(model_cls(params)), valid_data['in_test'], mode='valid'))
       log_pbar(result.mean(), valid_pbar)

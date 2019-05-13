@@ -125,6 +125,7 @@ class ResultDict(dict):
     dict_ = dict(*args, **kwargs)
     for key, value in dict_.items():
       self.__setitem__(key, value)
+    return self
 
   def append(self, *args, **kwargs):
     dict_ = dict(*args, **kwargs)
@@ -135,6 +136,7 @@ class ResultDict(dict):
         self.__setitem__(key, ResultList([value]))
       else:
         self.__getitem__(key).append(value)
+    return self
 
   def numpy(self):
     return ResultDict({k: np.array(v) for k, v in self.items()})
