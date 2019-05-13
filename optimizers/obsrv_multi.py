@@ -78,7 +78,7 @@ class Optimizer(OptimizerBase):
       best_params = None
 
       with WalltimeChecker(walltime):
-        model_train = C(model_cls(params=params.detach()))
+        model_train = C(model_cls(params.detach()))
         train_nll, train_acc = model_train(*data['in_train'].load())
         train_nll.backward()
 
@@ -121,7 +121,7 @@ class Optimizer(OptimizerBase):
             continue
 
           # cand_loss = model(*outer_data_s)
-          sparse_model = C(model_cls(params=params_pruned.detach()))
+          sparse_model = C(model_cls(params_pruned.detach()))
           loss, _ = sparse_model(*data['in_train'].load())
 
           if (loss < best_loss) or i == 0:
@@ -134,7 +134,7 @@ class Optimizer(OptimizerBase):
           params = best_params
 
       with WalltimeChecker(walltime if mode == 'train' else None):
-        model_test = C(model_cls(params=params))
+        model_test = C(model_cls(params))
         test_nll, test_acc = utils.isnan(*model_test(*data['in_test'].load()))
         test_kld = kld / data['in_test'].full_size / unroll
         ## kl annealing function 'linear' / 'logistic' / None

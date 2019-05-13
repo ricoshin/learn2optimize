@@ -121,7 +121,7 @@ class ResultDict(dict):
   def getitem(self, key):
     return ResultDict({k: v[key] for k, v in self.items()})
 
-  def update(self, name, *args, **kwargs):
+  def update(self, *args, **kwargs):
     dict_ = dict(*args, **kwargs)
     for key, value in dict_.items():
       self.__setitem__(key, value)

@@ -66,7 +66,7 @@ class Optimizer(OptimizerBase):
       debug_2 = sigstp.is_active()
 
       with WalltimeChecker(walltime):
-        model_train = C(model_cls(params=params.detach()))
+        model_train = C(model_cls(params.detach()))
         train_nll, train_acc = model_train(*data['in_train'].load())
         train_nll.backward()
 
@@ -94,7 +94,7 @@ class Optimizer(OptimizerBase):
           params = params + step_masked
 
       with WalltimeChecker(walltime if mode == 'train' else None):
-        model_test = C(model_cls(params=params))
+        model_test = C(model_cls(params))
         test_nll, test_acc = utils.isnan(*model_test(*data['in_test'].load()))
 
         if debug_2: pdb.set_trace()

@@ -84,7 +84,7 @@ class Optimizer(nn.Module):
     ################
     iter_pbar = tqdm(range(1, optim_it + 1), 'optim_iteration')
     iter_watch = utils.StopWatch('optim_iteration')
-    
+
     res1 = None
     res2=[]
     res3=[]
@@ -105,7 +105,7 @@ class Optimizer(nn.Module):
       else:
         debug_2 = False
 
-      model_detached = C(model_cls(params=params.detach()))
+      model_detached = C(model_cls(params.detach()))
       inner_data_s = inner_data.load()
       loss_detached = model_detached(*inner_data_s)
       loss_detached.backward()
@@ -142,7 +142,7 @@ class Optimizer(nn.Module):
           if debug_2:
             import pdb; pdb.set_trace()
           # cand_loss = model(*outer_data_s)
-          sparse_model = C(model_cls(params=sparse_params.detach()))
+          sparse_model = C(model_cls(sparse_params.detach()))
           loss = sparse_model(*inner_data_s)
           try:
             if loss < best_loss:
@@ -158,7 +158,7 @@ class Optimizer(nn.Module):
         best_kld = 0
 
       if mode == 'train':
-        model = C(model_cls(params=params))
+        model = C(model_cls(params))
         optim_loss = model(*outer_data.load())
         if torch.isnan(optim_loss):
           import pdb; pdb.set_trace()
@@ -199,7 +199,7 @@ class Optimizer(nn.Module):
         if mask_result is not None:
           mask_dict.append(mask_result)
       if mode == 'test' and draw_loss:
-        plot_loss(model_cls=model_cls, model=model_train, params=params, input_data=data['in_train'].load(), dataset=data['in_train'], 
+        plot_loss(model_cls=model_cls, model=model_train, params, input_data=data['in_train'].load(), dataset=data['in_train'],
             feature_gen=self.feature_gen, mask_gen=self.mask_gen, step_gen=self.step_gen, scale_way=None, xmin=-2.0, xmax=0.5, num_x=20, mode=mode, iteration=iter, iter_interval=iter_interval, loss_dir=result_dir)
       ##############################################################
       result_dict.append(loss=loss_detached)

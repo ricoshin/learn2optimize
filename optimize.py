@@ -33,8 +33,11 @@ def _get_optim_by_name(name):
 
 
 def log_pbar(result_dict, pbar, nitem_max=7):
-  desc = [f'{k}: {v:3.4f}' for k, v in result_dict.items()][:nitem_max]
-  pbar.set_description(f"{pbar.desc.split(' ')[0]} [{' | '.join(desc)}]")
+  try:
+    desc = [f'{k}: {v:3.4f}' for k, v in result_dict.items()][:nitem_max]
+    pbar.set_description(f"{pbar.desc.split(' ')[0]} [{' | '.join(desc)}]")
+  except:
+    import pdb; pdb.set_trace()
 
 
 def log_tf_event(writer, tag, result_dict, step, walltime=None, w_name='main'):
@@ -105,87 +108,90 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module,
 
   data = data_cls()
   best_params = None
-  best_valid = 999999
-  best_converge = 999999
-  result_outer = ResultDict()
-  epoch_pbar = tqdm(range(n_epoch), 'epoch')
+  best_valid_loss = 999999
+  # best_converge = 999999
 
+  train_result_mean = ResultDict()
+  valid_result_mean = ResultDict()
+
+  epoch_pbar = tqdm(range(n_epoch), 'epoch')
   for i in epoch_pbar:
     train_pbar = tqdm(range(n_train), 'outer_train')
-    result_train = ResultDict()
-    result_valid = ResultDict()
 
     # Meta-training
-    result_outer = ResultDict()
     for j in train_pbar:
       train_data = data.sample_meta_train()
-      result_inner, _ = optimizer.meta_optimize(
+      result, _ = optimizer.meta_optimize(
         meta_optim, train_data, model_cls, iter_train, unroll,
         out_mul, k_obsrv, no_mask, writer,'train')
-      result_outer.append(result_inner)
-      mean = result_inner.mean()
-      log_pbar(mean, train_pbar)
-      tr_scheduler.step(mean['test_nll'])
+      result_mean = result.mean()
+      log_pbar(result_mean, train_pbar)
       if save_dir:
-        step = n_train * i + j
-        result_train.append(mean, step=step)
-        log_tf_event(writer, 'meta_train_outer', mean, step)
-    mean_over_train = result_outer.mean(0)
+        step = (n_train * i) + j
+        train_result_mean.update(**result_mean, step=step)
+        log_tf_event(writer, 'meta_train_outer', result_mean, step)
+
     if save_dir:
-      save_figure(name, save_dir, writer, mean_over_train, i, 'train')
+      save_figure(name, save_dir, writer, result, i, 'train')
+
+    valid_pbar = tqdm(range(n_valid), 'outer_valid')
+    result_all = ResultDict()
+    result_final = ResultDict()
 
     # Meta-validation
-    valid_pbar = tqdm(range(n_valid), 'outer_valid')
-    result_outer = ResultDict()
-    result_final = ResultDict()
     for j in valid_pbar:
       valid_data = data.sample_meta_valid()
-      result_inner, params = optimizer.meta_optimize(
+      result, params = optimizer.meta_optimize(
         meta_optim, valid_data, model_cls, iter_valid, unroll,
         out_mul, k_obsrv, no_mask, writer, 'valid')
-      result_outer.append(result_inner)
-      result_mean = result_inner.mean()
-      final_model = C(model_cls(params=params))
+      result_all.append(result)
       result_final.append(final_inner_test(
-        final_model, valid_data['in_test'], mode='valid'))
-      log_pbar(result_mean ,valid_pbar)
-    mean_over_valid = result_outer.mean(0)
-    final_mean_over_valid = result_final.mean(0)
-    #import pdb; pdb.set_trace()
-    if lr_scheduling:
-      last_converge = final_mean_over_valid['loss_mean']
-      import pdb; pdb.set_trace()
-      if last_converge < best_converge:
-        best_converge = last_converge
-      if last_converge < 0.5:
-        lr_scheduler.step(last_converge, i)
-    # Log TF-event: averaged valid loss
-    mean_all = result_outer.mean()
+        C(model_cls(params)), valid_data['in_test'], mode='valid'))
+      log_pbar(result.mean(), valid_pbar)
+
+    result_final_mean = result_final.mean()
+    result_all_mean = result_all.mean().w_postfix('mean')
+    last_valid_loss = result_final_mean['loss_mean']
+    last_valid_acc = result_final_mean['acc_mean']
+
+    # Learning rate scheduling
+    if lr_scheduling: # and last_valid < 0.5:
+      lr_scheduler.step(last_valid_loss, i)
+
+    # Truncation scheduling
+    if tr_scheduling:
+      tr_scheduler.step(last_valid_loss, i)
+
+    # Save TF events and figures
     if save_dir:
       step = n_train * (i + 1)
-      result_valid.append(mean_all, step=step)
-      result_valid = result_valid.w_postfix('mean')
-      result_valid.append(
-        result_inner.getitem(-1).sub('test_nll').w_postfix('final'))
-      log_tf_event(writer, 'meta_valid_outer', mean_all, step)
-      log_tf_event(writer, 'meta_valid_outer', final_mean_over_valid, step)
-      save_figure(name, save_dir, writer, mean_over_valid, i, 'valid')
+      valid_result_mean.update(
+        **result_all_mean, **result_final_mean, step=step)
+      log_tf_event(writer, 'meta_valid_outer', result_all_mean, step)
+      log_tf_event(writer, 'meta_valid_outer', result_final_mean, step)
+      save_figure(name, save_dir, writer, result_all.mean(0), i, 'valid')
 
-    # Save current snapshot
-    last_valid = final_mean_over_valid['loss_mean']
-    if last_valid < best_valid:
-      best_valid = last_valid
-      optimizer.params.save(name, save_dir)
+    # Save the best snapshot
+    if last_valid_loss < best_valid_loss:
+      best_valid_loss = last_valid_loss
+      best_valid_acc = last_valid_acc
       best_params = copy.deepcopy(optimizer.params)
-    if (i % 10 ==0) and (i>0):
-      optimizer.params.save('{}_epoch{}'.format(name, i), save_dir)
+      if save_dir:
+        optimizer.params.save(name, save_dir)
+
     # Update epoch progress bar
-    result_epoch = dict(last_valid=last_valid, best_valid=best_valid)
+    result_epoch = dict(
+      best_valid_loss=best_valid_loss,
+      best_valid_acc=best_valid_acc,
+      last_valid_loss=last_valid_loss,
+      last_valid_acc=last_valid_acc,
+    )
     log_pbar(result_epoch, epoch_pbar)
 
   if save_dir:
-    result_train.save_as_csv(name, save_dir, 'meta_train_outer', True)
-    result_valid.save_as_csv(name, save_dir, 'meta_valid_outer', True)
+    train_result_mean.save_as_csv(name, save_dir, 'meta_train_outer', True)
+    valid_result_mean.save_as_csv(name, save_dir, 'meta_valid_outer', True)
+
   return best_params
 
 
@@ -205,46 +211,52 @@ def test_neural(name, save_dir, learned_params, data_cls, model_cls,
 
   meta_optim = None
   unroll = 1
-  np.random.seed(0)
 
-  best_test = 999999
-  result_outer = ResultDict()
+  best_test_loss = 999999
+  result_all = ResultDict()
   result_final = ResultDict()  # test loss & acc for the whole testset
   tests_pbar = tqdm(range(n_test), 'test')
 
   # Meta-test
   for j in tests_pbar:
     data = data_cls().sample_meta_test()
-    result_inner, params = optimizer.meta_optimize(meta_optim, data, model_cls,
+    result, params = optimizer.meta_optimize(meta_optim, data, model_cls,
       iter_test, unroll, out_mul, k_obsrv, no_mask, writer, 'test')
-    result_outer.append(result_inner)
-    # NOTE: we are not using best_test snapshot for final inner evaluation
-    #   since there is no guarentee that it has reached the minimum
-    #   w.r.t. the whole test set.
-    model = C(model_cls(params=params))
-    result_final.append(final_inner_test(model, data['in_test'], mode='test'))
-    last_test = result_inner.mean()['test_nll']
-    mean_test = result_outer.mean()['test_nll']
-    if last_test < best_test:
-      best_test = last_test
+    result_all.append(result)
+    result_final.append(final_inner_test(
+      C(model_cls(params)), data['in_test'], mode='test'))
+    result_final_mean = result_final.mean()
+    last_test_loss = result_final_mean['loss_mean']
+    last_test_acc = result_final_mean['acc_mean']
+
+    if last_test_loss < best_test_loss:
+      best_test_loss = last_test_loss
+      best_test_acc = last_test_acc
+
     result_test = dict(
-      last_test=last_test, mean_test=mean_test, best_test=best_test)
+      best_test_loss=best_test_loss,
+      best_test_acc=best_test_acc,
+      last_test_loss=last_test_loss,
+      last_test_acc=last_test_acc,
+    )
     log_pbar(result_test, tests_pbar)
     if save_dir:
-      save_figure(name, save_dir, writer, result_inner, j, 'test')
-  mean_over_test = result_outer.mean(0)
+      save_figure(name, save_dir, writer, result, j, 'test')
+  result_all_mean = result_all.mean(0)
 
   # TF-events for inner loop (train & test)
   if save_dir:
+    # test_result_mean = ResultDict()
     for i in range(iter_test):
-      mean = mean_over_test.getitem(i)
-      walltime = mean_over_test['walltime'][i]
-      log_tf_event(writer, 'meta_test_inner', mean, i, walltime)
-    result_outer.save(name, save_dir)
-    result_outer.save_as_csv(name, save_dir, 'meta_test_inner')
+      mean_i = result_all_mean.getitem(i)
+      walltime = result_all_mean['walltime'][i]
+      log_tf_event(writer, 'meta_test_inner', mean_i, i, walltime)
+      # test_result_mean.update(**mean_i, step=i, walltime=walltime)
+    result_all.save(name, save_dir)
+    result_all.save_as_csv(name, save_dir, 'meta_test_inner')
     result_final.save_as_csv(name, save_dir, 'meta_test_final', trans_1d=True)
 
-  return result_outer
+  return result_all
 
 
 def test_normal(name, save_dir, data_cls, model_cls, optim_cls, optim_args,
@@ -256,9 +268,9 @@ def test_normal(name, save_dir, data_cls, model_cls, optim_cls, optim_args,
 
   writer = TFWriter(save_dir, name) if save_dir else None
   tests_pbar = tqdm(range(n_test), 'outer_test')
-  result_outer = ResultDict()
+  result_all = ResultDict()
   result_final = ResultDict()  # test loss & acc for the whole testset
-  best_test = 999999
+  best_test_loss = 999999
   # params_tracker = ParamsIndexTracker(n_tracks=10)
 
   # Outer loop (n_test)
@@ -268,7 +280,7 @@ def test_normal(name, save_dir, data_cls, model_cls, optim_cls, optim_args,
     optimizer = optim_cls(model.parameters(), **optim_args)
 
     walltime = Walltime()
-    result_inner = ResultDict()
+    result = ResultDict()
     iter_pbar = tqdm(range(iter_test), 'inner_train')
 
     # Inner loop (iter_test)
@@ -286,44 +298,48 @@ def test_normal(name, save_dir, data_cls, model_cls, optim_cls, optim_args,
       test_nll, test_acc = model(*data['in_test'].load())
       # update = model.params.detach('hard').flat - before
       # grad = model.params.get_flat().grad
-      result_iter = dict(
+      result_ = dict(
         train_nll=train_nll.tolist(),
         test_nll=test_nll.tolist(),
         train_acc=train_acc.tolist(),
         test_acc=test_acc.tolist(),
         walltime=walltime.time,
         )
-      log_pbar(result_iter, iter_pbar)
-      result_inner.append(result_iter)
+      log_pbar(result_, iter_pbar)
+      result.append(result_)
+
     if save_dir:
-      save_figure(name, save_dir, writer, result_inner, j, 'normal')
-
-
-    result_outer.append(result_inner)
+      save_figure(name, save_dir, writer, result, j, 'normal')
+    result_all.append(result)
     result_final.append(final_inner_test(model, data['in_test'], mode='test'))
-    # NOTE: we are not using best_test snapshot for final inner evaluation
-    #   since there is no guarentee that it has reached the minimum
-    #   w.r.t. the whole test set.
-    last_test = result_inner.mean()['test_nll']
-    mean_test = result_outer.mean()['test_nll']
-    if last_test < best_test:
-      best_test = last_test
+
+    result_final_mean = result_final.mean()
+    last_test_loss = result_final_mean['loss_mean']
+    last_test_acc = result_final_mean['acc_mean']
+    if last_test_loss < best_test_loss:
+      best_test_loss = last_test_loss
+      best_test_acc = last_test_acc
     result_test = dict(
-      last_test=last_test, mean_test=mean_test, best_test=best_test)
+      best_test_loss=best_test_loss,
+      best_test_acc=best_test_acc,
+      last_test_loss=last_test_loss,
+      last_test_acc=last_test_acc,
+    )
     log_pbar(result_test, tests_pbar)
 
   # TF-events for inner loop (train & test)
-  mean_over_j = result_outer.mean(0)
+  mean_j = result_all.mean(0)
   if save_dir:
     for i in range(iter_test):
-      mean = mean_over_j.getitem(i)
-      walltime = mean_over_j['walltime'][i]
+      mean = mean_j.getitem(i)
+      walltime = mean_j['walltime'][i]
       log_tf_event(writer, 'meta_test_inner', mean, i, walltime)
-    result_outer.save(name, save_dir)
-    result_outer.save_as_csv(name, save_dir, 'meta_test_inner')
+    result_all.save(name, save_dir)
+    result_all.save_as_csv(name, save_dir, 'meta_test_inner')
     result_final.save_as_csv(name, save_dir, 'meta_test_final', trans_1d=True)
 
-  return result_outer
+  return result_all
+
 
 def final_inner_test(model, data, mode='test', batch_size=2000):
   data_new = data.from_dataset(

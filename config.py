@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 from collections import OrderedDict as odict
@@ -180,12 +181,12 @@ def _get_neural_optimizers(problem, names=None):
         if 'test_args' in opt:
           opt['test_args'].update(_common_test_args_debug)
         else:
-          opt['test_args'] = _common_test_args_debug
+          opt['test_args'] = copy.deepcopy(_common_test_args_debug)
       else:
         if 'test_args' in opt:
           opt['test_args'].update(_common_test_args)
         else:
-          opt['test_args'] = _common_test_args
+          opt['test_args'] = copy.deepcopy(_common_test_args)
       opt['test_args']['optim_module'] = name
   CONFIG['neural_optimizers'] = neural_optimizers_
   return CONFIG['neural_optimizers']
