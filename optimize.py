@@ -17,6 +17,7 @@ from utils import utils
 from utils.result import ResultDict
 from utils.utils import TFWriter, ReduceLROnPlateau, save_figure
 from utils.timer import Walltime, WalltimeChecker
+from utils.trunc_scheduler import Truncation
 import matplotlib.pyplot as plt
 
 C = utils.getCudaManager('default')
@@ -51,6 +52,11 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module,
   meta_optim='sgd'):
   """Function for meta-training and meta-validation of learned optimizers.
   """
+
+  # Options
+  lr_scheduling = True  # learning rate scheduling
+  tr_scheduling = True  # truncation scheduling
+
   print(f'data_cls: {data_cls}')
   print(f'model_cls: {model_cls}')
   data_cls = _get_attr_by_name(data_cls)
@@ -65,7 +71,7 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module,
 
   """meta-optimizer"""
   meta_optim = {'sgd': 'SGD', 'adam': 'Adam'}[meta_optim.lower()]
-  lr_scheduling = True
+
 
   if 'obsrv' not in optim_module:
     wd = 1e-5
@@ -90,8 +96,12 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module,
     ])
 
   if lr_scheduling:
-    scheduler = ReduceLROnPlateau(
+    lr_scheduler = ReduceLROnPlateau(
       meta_optim, mode='min', factor=0.5, patience=1, verbose=True)
+
+  if tr_scheduling:
+    tr_scheduler = Truncation(
+      unroll, mode='min', factor=1.5, patience=1, verbose=True)
 
   data = data_cls()
   best_params = None
@@ -115,6 +125,7 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module,
       result_outer.append(result_inner)
       mean = result_inner.mean()
       log_pbar(mean, train_pbar)
+      tr_scheduler.step(mean['test_nll'])
       if save_dir:
         step = n_train * i + j
         result_train.append(mean, step=step)
@@ -135,17 +146,19 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module,
       result_outer.append(result_inner)
       result_mean = result_inner.mean()
       final_model = C(model_cls(params=params))
-      result_final.append(final_inner_test(final_model, valid_data['in_test'], mode='valid'))
+      result_final.append(final_inner_test(
+        final_model, valid_data['in_test'], mode='valid'))
       log_pbar(result_mean ,valid_pbar)
     mean_over_valid = result_outer.mean(0)
     final_mean_over_valid = result_final.mean(0)
     #import pdb; pdb.set_trace()
     if lr_scheduling:
       last_converge = final_mean_over_valid['loss_mean']
+      import pdb; pdb.set_trace()
       if last_converge < best_converge:
         best_converge = last_converge
       if last_converge < 0.5:
-        scheduler.step(last_converge)
+        lr_scheduler.step(last_converge, i)
     # Log TF-event: averaged valid loss
     mean_all = result_outer.mean()
     if save_dir:

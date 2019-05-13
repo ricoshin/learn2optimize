@@ -32,6 +32,61 @@ def getSignalCatcher(name):
   # return _debugger
 
 
+class TruncationManager(object):
+  def __init__(self, init_trunc_len=10, patience=10, warmup=10,
+    min=10, max=500, decaying_rate=0.9, inc=10):
+    self._init_trunc_len = init_trunc_len
+    self._trunc_len = init_trunc_len
+    self._decaying_rate = decaying_rate
+    self._patience = patience
+    self._warmup = warmup
+    self._best_loss = 999999
+    self._bad_loss = 0
+    self._m = None
+    self._min = min
+    self._max = max
+    self._inc = inc
+
+  @property
+  def len(self):
+    if self._trunc_len > self._max:
+      self._trunc_len = self._max
+    if self._trunc_len < self._min:
+      self._trunc_len = self._min
+    return self._trunc_len
+
+  @property
+  def static_len(self):
+    return self._init_trunc_len
+
+  def compute_moving_avg(self, x):
+    if self._m is None:
+      self._m = x
+      return self._m
+    d = self._decaying_rate
+    self._m = self._m * d + x * (1 - d)
+    return self._m
+
+  def update_loss(self, loss):
+    if isinstance(loss, torch.Tensor):
+      loss = loss.tolist()
+    m = self.compute_moving_avg(loss)
+    if m <= self._best_loss:
+      self._best_loss = m
+    else:
+      self._bad_loss += 1
+      if self._bad_loss > self._patience:
+        self._trunc_len += 5
+        self._bad_loss = 0
+        print(f'\n\n\ntruncation: {self.len}')
+
+
+  def update_loss_list(self, losses):
+    assert isinstance(losses, (list, tuple))
+    for loss in losses:
+      self.update_loss(loss)
+
+
 class SignalCatcher(object):
   def __init__(self, name):
     self.name = name

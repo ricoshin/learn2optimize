@@ -124,7 +124,6 @@ class Optimizer(OptimizerBase):
           sparse_model = C(model_cls(params=params_pruned.detach()))
           loss, _ = sparse_model(*data['in_train'].load())
 
-
           if (loss < best_loss) or i == 0:
             best_loss = loss
             best_params = params_sparse
