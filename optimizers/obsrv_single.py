@@ -83,7 +83,7 @@ class Optimizer(OptimizerBase):
           params = params + step
         else:
           kld = self.mask_gen(feature, size, debug=debug_1)
-          test_kld = kld / data['in_test'].full_size  # * 0.00005
+          test_kld = kld / data['in_test'].full_size / unroll
           ## kl annealing function 'linear' / 'logistic' / None
           test_kld2 = test_kld * kl_anneal_function(
             anneal_function=None, step=iter, k=0.0025, x0=optim_it)
@@ -100,7 +100,7 @@ class Optimizer(OptimizerBase):
         if debug_2: pdb.set_trace()
 
         if mode == 'train':
-          unroll_losses += test_nll + test_kld2
+          unroll_losses += test_nll + test_kld
           if iter % unroll == 0:
             meta_optim.zero_grad()
             unroll_losses.backward()
@@ -127,7 +127,7 @@ class Optimizer(OptimizerBase):
           test_nll=test_nll.tolist(),
           train_acc=train_acc.tolist(),
           test_acc=test_acc.tolist(),
-          test_kld=test_kld2.tolist(),
+          test_kld=test_kld.tolist(),
           walltime=walltime.time,
       )
       if no_mask is False:

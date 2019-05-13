@@ -139,7 +139,8 @@ class Optimizer(OptimizerBase):
         test_nll, test_acc = utils.isnan(*model_test(*data['in_test'].load()))
         test_kld = kld / data['in_test'].full_size
         ## kl annealing function 'linear' / 'logistic' / None
-        test_kld2 = test_kld * kl_anneal_function(anneal_function=None, step=iter, k=0.0025, x0=optim_it)
+        test_kld2 = test_kld * kl_anneal_function(
+          anneal_function=None, step=iter, k=0.0025, x0=optim_it)
         total_test = test_nll + test_kld2
 
         if mode == 'train':

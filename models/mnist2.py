@@ -16,7 +16,7 @@ C = utils.getCudaManager('default')
 
 
 class MNISTModel2(nn.Module):
-  def __init__(self, params=None, type='conv'):
+  def __init__(self, params=None, type='linear'):
     super().__init__()
     assert type in ['linear', 'conv']
     self.type = type
