@@ -39,7 +39,7 @@ class MNISTModel2(nn.Module):
 
   def stack_layers(self, type, channels=None):
     """Layer stacking function (just for MNIST).
-    FIX LATER: full argument accessiblity."""
+    FIX LATER: full argument accessibility."""
     assert channels is None or isinstance(channels, (list, tuple))
     if type == 'linear':
       if channels is None:

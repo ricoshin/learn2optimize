@@ -133,7 +133,7 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module,
       log_pbar(result_mean, train_pbar)
       if save_dir:
         step = (n_train * i) + j
-        train_result_mean.update(**result_mean, step=step)
+        train_result_mean.append(result_mean, step=step)
         log_tf_event(writer, 'meta_train_outer', result_mean, step)
 
     if save_dir:
@@ -150,8 +150,7 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module,
         meta_optim, valid_data, model_cls, iter_valid, unroll,
         out_mul, k_obsrv, no_mask, writer, 'valid')
 
-      result_all.append(**result, **get_lr(meta_optim),
-        trunc_len=tr_scheduler.len)
+      result_all.append(**result)
       result_final.append(final_inner_test(
         C(model_cls(params)), valid_data['in_test'], mode='valid'))
       log_pbar(result.mean(), valid_pbar)
@@ -172,10 +171,10 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module,
     # Save TF events and figures
     if save_dir:
       step = n_train * (i + 1)
-      valid_result_mean.update(
-        **result_all_mean, **result_final_mean, step=step)
-      log_tf_event(writer, 'meta_valid_outer', result_all_mean, step)
-      log_tf_event(writer, 'meta_valid_outer', result_final_mean, step)
+      result_mean = ResultDict(**result_all_mean, **result_final_mean,
+        **get_lr(meta_optim), trunc_len=tr_scheduler.len, step=step)
+      valid_result_mean.append(result_mean)
+      log_tf_event(writer, 'meta_valid_outer', result_mean, step)
       save_figure(name, save_dir, writer, result_all.mean(0), i, 'valid')
 
     # Save the best snapshot
@@ -355,7 +354,7 @@ def final_inner_test(model, data, mode='test', batch_size=2000):
   acc_mean = []
   sizes = []
   n_batch = range(len(data_new))
-  for x, y in tqdm(data_new.iterator, 'final_inner_{}'.format(mode)):
+  for x, y in tqdm(data_new.iterator, 'Final_inner_{}'.format(mode)):
     loss, acc = model(x, y)
     loss_mean.append(loss)
     acc_mean.append(acc)
