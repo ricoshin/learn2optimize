@@ -12,6 +12,7 @@ _problems = {
     'debug': odict(data_cls='MNISTData', model_cls='MNISTModel2'),
     'quadratic': odict(data_cls='QuadraticData', model_cls='QuadraticModel'),
     'mnist': odict(data_cls='MNISTData', model_cls='MNISTModel2'),
+    'imagenet': odict(data_cls='ImageNetData', model_cls='MNISTModel2'),
 }
 
 ################################################################################
@@ -59,6 +60,7 @@ _neural_optimizers = odict({
     'debug': _neural_optimizers_debug,
     'quadratic': _neural_optimizers_quadratic,
     'mnist': _neural_optimizers_mnist,
+    'imagenet': _neural_optimizers_mnist, # Fix later
 })
 
 # _common_neural_args = {
@@ -117,6 +119,7 @@ _normal_optimizers = odict({
   'debug': _normal_optimizers_mnist, # TODO
   'quadratic': _normal_optimizers_quadratic,
   'mnist': _normal_optimizers_mnist,
+  'imagenet': _normal_optimizers_mnist,  # Fix later
 })
 
 """NOTE: n_valid here is not for an actual inner-level held-out development set.
