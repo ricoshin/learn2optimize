@@ -58,10 +58,10 @@ class ImageNet(ImageFolder):
 
         idcs = [idx for _, idx in self.imgs]
         self.wnids = self.classes
-        self.wnid_to_idx = {wnid: idx for idx, wnid in zip(idcs, self.wnids)}
+        self.wnid_to_idx = {wnid: idx for idx, wnid in enumerate(self.wnids)}
         self.classes = [wnid_to_classes[wnid] for wnid in self.wnids]
         self.class_to_idx = {cls: idx
-                             for clss, idx in zip(self.classes, idcs)
+                             for idx, clss in enumerate(self.classes)
                              for cls in clss}
 
     def download(self):
