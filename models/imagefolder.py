@@ -1,10 +1,12 @@
-from .vision import VisionDataset
-
+import torch
+from torch.utils import data
 from PIL import Image
 
 import os
-import os.path
+from os import path
 import sys
+import pickle
+import numpy as np
 
 
 def has_file_allowed_extension(filename, extensions):
@@ -33,7 +35,7 @@ def is_image_file(filename):
 
 
 def make_dataset(dir, class_to_idx, extensions=None, is_valid_file=None):
-    images = []
+    idx_to_imgs = {}
     dir = os.path.expanduser(dir)
     if not ((extensions is None) ^ (is_valid_file is None)):
         raise ValueError("Both extensions and is_valid_file cannot be None or not None at the same time")
@@ -41,17 +43,79 @@ def make_dataset(dir, class_to_idx, extensions=None, is_valid_file=None):
         def is_valid_file(x):
             return has_file_allowed_extension(x, extensions)
     for target in sorted(class_to_idx.keys()):
+        imgs = []
         d = os.path.join(dir, target)
+        idx = class_to_idx[target]
         if not os.path.isdir(d):
             continue
         for root, _, fnames in sorted(os.walk(d)):
             for fname in sorted(fnames):
                 path = os.path.join(root, fname)
                 if is_valid_file(path):
-                    item = (path, class_to_idx[target])
-                    images.append(item)
+                    imgs.append((path, idx))
+        idx_to_imgs[idx] = imgs
+    return idx_to_imgs
 
-    return images
+
+class VisionDataset(data.Dataset):
+    _repr_indent = 4
+
+    def __init__(self, root, transforms=None, transform=None, target_transform=None):
+        if isinstance(root, torch._six.string_classes):
+            root = os.path.expanduser(root)
+        self.root = root
+
+        has_transforms = transforms is not None
+        has_separate_transform = transform is not None or target_transform is not None
+        if has_transforms and has_separate_transform:
+            raise ValueError("Only transforms or transform/target_transform can "
+                             "be passed as argument")
+
+        # for backwards-compatibility
+        self.transform = transform
+        self.target_transform = target_transform
+
+        if has_separate_transform:
+            transforms = StandardTransform(transform, target_transform)
+        self.transforms = transforms
+
+    def __getitem__(self, index):
+        raise NotImplementedError
+
+    def __len__(self):
+        raise NotImplementedError
+
+    def __repr__(self):
+        head = "Dataset " + self.__class__.__name__
+        body = ["Number of datapoints: {}".format(self.__len__())]
+        if self.root is not None:
+            body.append("Root location: {}".format(self.root))
+        body += self.extra_repr().splitlines()
+        if self.transforms is not None:
+            body += [repr(self.transforms)]
+        lines = [head] + [" " * self._repr_indent + line for line in body]
+        return '\n'.join(lines)
+
+    def _format_transform_repr(self, transform, head):
+        lines = transform.__repr__().splitlines()
+        return (["{}{}".format(head, lines[0])] +
+                ["{}{}".format(" " * len(head), line) for line in lines[1:]])
+
+    def extra_repr(self):
+        return ""
+
+
+class ConcatDatasetFolder(data.ConcatDataset):
+  def __init__(self, datasets):
+    assert len(datasets) > 0, 'datasets should not be an empty iterable'
+    if not all([isinstance(dataset, DatasetFolder) for dataset in datasets]):
+      raise TypeError('All the datasets have to be DatasetFolders.')
+
+    for dataset in datasets:
+      dataset.sample_random_classes
+      self.datasets = list(datasets)
+      self.cumulative_sizes = self.cumsum(self.datasets)
+
 
 
 class DatasetFolder(VisionDataset):
@@ -86,23 +150,65 @@ class DatasetFolder(VisionDataset):
         targets (list): The class_index value for each image in the dataset
     """
 
-    def __init__(self, root, loader, extensions=None, transform=None, target_transform=None, is_valid_file=None):
+    def __init__(self, root, loader, extensions=None, transform=None, target_transform=None, is_valid_file=None, load_dicts=True):
         super(DatasetFolder, self).__init__(root)
         self.transform = transform
         self.target_transform = target_transform
-        classes, class_to_idx = self._find_classes(self.root)
-        samples = make_dataset(self.root, class_to_idx, extensions, is_valid_file)
-        if len(samples) == 0:
-            raise (RuntimeError("Found 0 files in subfolders of: " + self.root + "\n"
-                                "Supported extensions are: " + ",".join(extensions)))
+        self._dicts_file = path.join(self.root, 'dicts.pickle')
+
+        if load_dicts and self._is_dicts_loadable():
+          dicts = self._load_dicts()
+        else:
+          dicts = self._make_dicts(extensions, is_valid_file)
+          if load_dicts:
+            self._save_dicts(*dicts)
+
+        classes, class_to_idx, idx_to_imgs = dicts
 
         self.loader = loader
         self.extensions = extensions
-
         self.classes = classes
         self.class_to_idx = class_to_idx
-        self.samples = samples
-        self.targets = [s[1] for s in samples]
+        self.idx_to_imgs = idx_to_imgs
+        self.samples, self.targets = self._get_samples_n_targets()
+
+    def _get_samples_n_targets(self, idx=None):
+      samples = []
+      targets = []
+      for k, v in self.idx_to_imgs.items():
+        if idx is None or k in idx:
+          samples.extend(v)
+          targets.extend(v[1])
+      return samples, targets
+
+    def sample_random_classes(self, num):
+      sampled_idx = np.random.choice(len(self.classes), num)
+      self.samples, self.targets = self._get_samples_n_targets(sampled_idx)
+
+    def _is_dicts_loadable(self):
+      return path.exists(self._dicts_file):
+
+    def _load_dicts(self):
+      with open(self._dicts_file, 'rb') as f:
+        dicts = pickle.load(f)
+      print(f'Loaded preprocessed dataset dictionaries: {self._dicts_file}')
+      return dicts
+
+    def _save_dicts(self, *dicts):
+      with open(self._dicts_file, 'wb') as f:
+        pickle.dump(dicts, f)
+      print(f'Saved processed dataset dictionaries: {self._dicts_file}')
+
+    def _make_dicts(self, extensions, is_valid_file):
+      print('Making dataset dictionaries..')
+      classes, class_to_idx = self._find_classes(self.root)
+      idx_to_imgs = make_dataset(
+        self.root, class_to_idx, extensions, is_valid_file)
+      if any([len(v) == 0 for v in idx_to_imgs.values()]):
+          raise (RuntimeError(
+            "Found 0 files in subfolders of: " + self.root + "\n"
+            "Supported extensions are: " + ",".join(extensions)))
+      return (classes, class_to_idx, idx_to_imgs)
 
     def _find_classes(self, dir):
         """
@@ -146,6 +252,7 @@ class DatasetFolder(VisionDataset):
 
     def __len__(self):
         return len(self.samples)
+
 
 
 

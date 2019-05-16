@@ -2,7 +2,7 @@ from __future__ import print_function
 import os
 import shutil
 import torch
-from torchvision.datasets import ImageFolder
+from models.imagefolder import ImageFolder
 from torchvision.datasets.utils import check_integrity, download_url
 
 ARCHIVE_DICT = {
