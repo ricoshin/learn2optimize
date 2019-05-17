@@ -6,9 +6,9 @@ import sys
 import numpy as np
 import torch
 import torch.optim as optim
-from models.mnist import MNISTData, MNISTModel
-from models.mnist2 import MNISTModel2
-from models.imagenet import ImageNetData  # Fix later
+from datasets.loader_mnist import MNISTData
+from datasets.loader_imagenet import ImageNetData 
+from models.model import Model
 from models.model_helpers import ParamsIndexTracker
 from models.quadratic import QuadraticData, QuadraticModel
 from tensorboardX import SummaryWriter

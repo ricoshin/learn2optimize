@@ -15,21 +15,22 @@ from utils import utils
 C = utils.getCudaManager('default')
 
 
-class MNISTModel2(nn.Module):
-  def __init__(self, params=None, type='linear'):
+class Model(nn.Module):
+  """Target model(optimizee) class."""
+  def __init__(self, params=None, dataset='imagenet', type='linear'):
     super().__init__()
+    assert dataset in ['mnist', 'imagenet']
     assert type in ['linear', 'conv']
     self.type = type
-
     if params is not None:
       if not isinstance(params, ParamsFlattener):
         raise TypeError("params argumennts has to be "
                         "an instance of ParamsFlattener!")
       self.params = params
-      self.layers = C(self.stack_layers(type, params.channels()))
+      self.layers = C(self.stack_layers(type, dataset, params.channels()))
       self.params2layers(self.params, self.layers)
     else:
-      self.layers = C(self.stack_layers(type))
+      self.layers = C(self.stack_layers(type, dataset))
       self.params = self.layers2params(self.layers)
 
     # self.reset_variables()
@@ -37,18 +38,30 @@ class MNISTModel2(nn.Module):
     self.nonlinear = nn.Sigmoid()
     self.loss = nn.NLLLoss()
 
-  def stack_layers(self, type, channels=None):
+  def _adapt_dataset(self, dataset):
+    if dataset == 'mnist':
+      in_c = 1
+      in_hw = 28
+    elif dataset == 'imagenet':
+      in_c = 3
+      in_hw = 32
+    else:
+      raise Exception(f'Unknown dataset: {dataset}')
+    return in_c, in_hw
+
+  def stack_layers(self, type, dataset, channels=None):
     """Layer stacking function (just for MNIST).
     FIX LATER: full argument accessibility."""
     assert channels is None or isinstance(channels, (list, tuple))
+    in_c, in_hw = self._adapt_dataset(dataset)
     if type == 'linear':
       if channels is None:
         channels = [500]
-      layers = self._stack_linears(28*28, 10, channels)
+      layers = self._stack_linears(in_hw*in_hw*in_c, 10, channels)
     elif type == 'conv':
       if channels is None:
         channels = [32, 64, 128]
-      layers = self._stack_convs(28, 1, 10, channels)
+      layers = self._stack_convs(in_hw, in_c, 10, channels)
     else:
       raise Exception(f'Unknown type: {type}')
     return layers
@@ -193,6 +206,7 @@ class MNISTModel2(nn.Module):
 
     if out is not None:
       out = C(out)
+      import pdb; pdb.set_trace()
       loss = self.loss(inp, out)
       acc = (inp.argmax(dim=1) == out).float().mean()
     else:

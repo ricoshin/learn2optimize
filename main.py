@@ -67,8 +67,9 @@ def main():
   save_dir = utils.prepare_dir(args.problem, args.result_dir, args.save_dir)
   if not args.test_optim:
     args.test_optim = args.train_optim
-    print('No test optimzers.\nAll the optimizers set to be trained '
-      f'will be automatically on the list: {args.train_optim}\n')
+    print('Test optimizers are not specified.\n'
+          'All the optimizers set to be trained '
+          f'will be automatically on the test list: {args.train_optim}\n')
   # set problem & config
   print(f'Problem: {args.problem}')
   cfg = Config(getConfig(args))
