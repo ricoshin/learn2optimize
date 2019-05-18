@@ -22,7 +22,7 @@ class IterDataLoader(object):
   without forcibley using iterative loops.
   """
 
-  def __init__(self, dataset, batch_size, num_workers=4, sampler=None):
+  def __init__(self, dataset, batch_size, num_workers=8, sampler=None):
     self.dataset = dataset
     self.dataloader = data.DataLoader(dataset, batch_size, num_workers, sampler)
     self.iterator = iter(self.dataloader)

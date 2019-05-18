@@ -208,6 +208,7 @@ class DatasetFolder(VisionDataset):
       raise (RuntimeError(
           "Found 0 files in subfolders of: " + self.root + "\n"
           "Supported extensions are: " + ",".join(extensions)))
+    print('Done!')
     return Metadata(classes, class_to_idx, idx_to_class, idx_to_samples)
 
   def _find_classes(self, dir):
