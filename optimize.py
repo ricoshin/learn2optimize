@@ -6,8 +6,9 @@ import sys
 import numpy as np
 import torch
 import torch.optim as optim
-from models.mnist import MNISTData, MNISTModel
-from models.mnist2 import MNISTModel2
+from datasets.loader_mnist import MNISTData
+from datasets.loader_imagenet import ImageNetData 
+from models.model import Model
 from models.model_helpers import ParamsIndexTracker
 from models.quadratic import QuadraticData, QuadraticModel
 from tensorboardX import SummaryWriter
@@ -82,7 +83,7 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module,
   meta_optim = {'sgd': 'SGD', 'adam': 'Adam'}[meta_optim.lower()]
 
 
-  if seperate_lr:
+  if not seperate_lr or 'obsrv' not in optim_module:
     wd = 1e-5
     print(f'meta optimizer: {meta_optim} / lr: {lr} / wd: {wd}\n')
     meta_optim = getattr(torch.optim, meta_optim)(
@@ -106,7 +107,7 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module,
 
   if lr_scheduling:
     lr_scheduler = ReduceLROnPlateau(
-      meta_optim, mode='min', factor=0.5, patience=1, verbose=True)
+      meta_optim, mode='min', factor=0.5, patience=10, verbose=True)
 
   tr_scheduler = Truncation(
     unroll, mode='min', factor=1.5, patience=1, max_len=50, verbose=True)
@@ -365,7 +366,7 @@ def final_inner_test(model, data, mode='test', batch_size=2000):
   sizes = C(torch.tensor(sizes)).float()
   loss_mean = (loss_mean * sizes).sum() / sizes.sum()
   acc_mean = (acc_mean * sizes).sum() / sizes.sum()
-  return {'loss_mean': loss_mean, 'acc_mean': acc_mean}
+  return {'final_loss_mean': loss_mean, 'final_acc_mean': acc_mean}
 
 
 def find_best_lr(lr_list, data_cls, model_cls, optim_module, optim_args, n_test,

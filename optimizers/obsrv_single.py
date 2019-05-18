@@ -100,7 +100,7 @@ class Optimizer(OptimizerBase):
         if debug_2: pdb.set_trace()
 
         if mode == 'train':
-          unroll_losses += test_nll + test_kld
+          unroll_losses += test_nll  + test_kld
           if iter % unroll == 0:
             meta_optim.zero_grad()
             unroll_losses.backward()

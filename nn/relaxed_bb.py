@@ -57,7 +57,7 @@ class RelaxedBetaBernoulli(nn.Module):
     """
     # a, b = self.get_params(x)
     pi = self.sample_pi(a, b)
-    temp = C(torch.Tensor([0.1]))
+    temp = C(torch.Tensor([0.001]))
     z = RelaxedBernoulli(temp, probs=pi).rsample()
     return z, pi
 
