@@ -66,8 +66,9 @@ def scandir(supdir, subdirs):
 
 
 def process(chunk):
-  filepaths, pos = chunk
-  for filepath in tqdm(filepaths, position=pos):
+  filepaths, i = chunk
+  process_desc = '[Process #%2d] ' % i
+  for filepath in tqdm(filepaths, desc=process_desc, position=i):
     img = Image.open(filepath)
     img = img.resize(RESIZE, RESIZE_FILTER)
     # img.show()
