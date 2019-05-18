@@ -1,5 +1,5 @@
 """Preprocess ImageNet 1K in advance, in order to avoid transform
-overhead one would have to amortize at each batch collection using dataloader.
+overhead one would have amortized at each batch collection using dataloader.
 
 Recommend you to install Pillow-SIMD first.
   $ pip uninstall pillow
@@ -18,7 +18,12 @@ from os import path
 
 RESIZE = (32, 32)
 IMAGENET_DIR = '/v9/whshin/imagenet/'
-VISIBLE_SUBDIRS = ['train', 'val']
+# VISIBLE_SUBDIRS = ['train', 'val']
+VISIBLE_SUBDIRS = ['val']
+EXIST_OK = True  # Enable overwriting if it's set True
+DEBUG = False
+MAX_N_PROCESS = 9999
+
 RESIZE_FILTER = {
   0: Image.NEAREST,
   1: Image.BILINEAR,
@@ -28,8 +33,6 @@ RESIZE_FILTER = {
 
 IMG_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.ppm', '.bmp',
                   '.pgm', '.tif', '.tiff', '.webp')
-EXIST_OK = False  # Enable overwriting if it's set True
-DEBUG = False
 
 
 def is_image_file(filepath):
@@ -93,7 +96,7 @@ def process(chunk):
       img = img.resize(RESIZE, RESIZE_FILTER)
       # make new path ready
       base, dataset, subdirs, filename = split_path(filepath)
-      dataset_new = "_".join([dataset, 'resized', *map(str, RESIZE)])
+      dataset_new = "_".join([dataset, 'resize', *map(str, RESIZE)])
       classpath_new = path.join(base, dataset_new, subdirs)
       os.makedirs(classpath_new, exist_ok=EXIST_OK)
       filepath_new = path.join(classpath_new, filename)
@@ -113,7 +116,7 @@ def run():
   paths = scandir(IMAGENET_DIR, subdirs)
   print('Done.')
 
-  num_process = 1 if DEBUG else mp.cpu_count()
+  num_process = 1 if DEBUG else min(mp.cpu_count(), MAX_N_PROCESS)
   chunks = chunkify(paths, num_process)
 
   if DEBUG:

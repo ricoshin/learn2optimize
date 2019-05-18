@@ -22,7 +22,7 @@ class IterDataLoader(object):
   without forcibley using iterative loops.
   """
 
-  def __init__(self, dataset, batch_size, num_workers=32, sampler=None):
+  def __init__(self, dataset, batch_size, num_workers=4, sampler=None):
     self.dataset = dataset
     self.dataloader = data.DataLoader(dataset, batch_size, num_workers, sampler)
     self.iterator = iter(self.dataloader)
@@ -80,12 +80,13 @@ class ImageNetData:
   def __init__(self, batch_size=64, fixed=False):
     self.fixed = fixed
     self.batch_size = batch_size
-    path = '/v9/whshin/imagenet'
+    path = '/v9/whshin/imagenet_resized_32_32'
+    print(f'Data loading from: {path}')
     # path ='./imagenet'
     composed_transforms = transforms.Compose([
-      transforms.RandomResizedCrop(32),
-      # transform.Resize([32, 32], interpolation=2),
-      transforms.RandomHorizontalFlip(0.5),
+      # transforms.RandomResizedCrop(32),
+      # transforms.Resize([32, 32], interpolation=2),
+      # transforms.RandomHorizontalFlip(0.5),
       transforms.ToTensor(),
     ])
     train_data = ImageNet(path, split='train', download=True,

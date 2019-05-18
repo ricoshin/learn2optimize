@@ -88,6 +88,7 @@ class SubsetClass(Dataset):
   def __init__(self, dataset, idx=None, debug=False):
     self.valid_dataset(dataset)
     self.dataset = dataset
+    
     if idx is None:
       self.indices = list(range(len(dataset)))
       self.meta = dataset.meta

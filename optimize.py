@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import torch.optim as optim
 from datasets.loader_mnist import MNISTData
-from datasets.loader_imagenet import ImageNetData 
+from datasets.loader_imagenet import ImageNetData
 from models.model import Model
 from models.model_helpers import ParamsIndexTracker
 from models.quadratic import QuadraticData, QuadraticModel
@@ -269,6 +269,7 @@ def test_neural(name, save_dir, learned_params, data_cls, model_cls,
 def test_normal(name, save_dir, data_cls, model_cls, optim_cls, optim_args,
                 n_test, iter_test):
   """function for test of static optimizers."""
+  
   data_cls = _get_attr_by_name(data_cls)
   model_cls = _get_attr_by_name(model_cls)
   optim_cls = _get_attr_by_name(optim_cls)
@@ -392,5 +393,3 @@ def find_best_lr(name, save_dir, lr_list, data_cls, model_cls, optim_cls, optim_
       best_loss = loss
       best_lr = lr
   return best_loss, best_lr
-
-
