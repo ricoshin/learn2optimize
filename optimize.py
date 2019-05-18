@@ -369,11 +369,11 @@ def final_inner_test(model, data, mode='test', batch_size=2000):
   return {'final_loss_mean': loss_mean, 'final_acc_mean': acc_mean}
 
 
-def find_best_lr(lr_list, data_cls, model_cls, optim_module, optim_args, n_test,
-                 optim_it):
-  data_cls = _get_attr_by_name(data_cls)
-  model_cls = _get_attr_by_name(model_cls)
-  optim_cls = _get_attr_by_name(optim_module).Optimizer
+def find_best_lr(name, save_dir, lr_list, data_cls, model_cls, optim_cls, optim_args, n_test,
+                 iter_test):
+  #data_cls = _get_attr_by_name(data_cls)
+  #model_cls = _get_attr_by_name(model_cls)
+  #optim_cls = _get_attr_by_name(optim_cls)
   best_loss = 999999
   best_lr = 0.0
   lr_list = [
@@ -382,8 +382,9 @@ def find_best_lr(lr_list, data_cls, model_cls, optim_module, optim_args, n_test,
   for lr in tqdm(lr_list, 'Learning rates'):
     try:
       optim_args['lr'] = lr
-      loss = np.mean([np.sum(s) for s in test_normal(
-          data_cls, model_cls, optim_cls, optim_args, n_test, optim_it)])
+      loss = np.mean([np.sum(s) for s in test_normal(name, save_dir,
+          data_cls, model_cls, optim_cls, optim_args, n_test, iter_test)])
+      print('lr: {} loss: {}'.format(lr, loss))
     except RuntimeError:
       print('RuntimeError!')
       pass
@@ -391,3 +392,5 @@ def find_best_lr(lr_list, data_cls, model_cls, optim_module, optim_args, n_test,
       best_loss = loss
       best_lr = lr
   return best_loss, best_lr
+
+

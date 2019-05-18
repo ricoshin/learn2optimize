@@ -109,6 +109,8 @@ def main():
         print(f'\nOptimizing with static optimizer: {name}')
         kwargs = normal_optimizers[name]
         result = test_normal(name, save_dir, **problem, **kwargs)
+        lr_list = [1.0, 0.3, 0.1, 0.03, 0.01, 0.003, 0.001, 0.0003, 0.0001]
+        #best_loss, best_lr = find_best_lr(name, save_dir, lr_list, **problem, **kwargs)
         results[name] = result
       elif name in neural_optimizers:
         print(f'\n\nOptimizing with learned optimizer: {name}')
