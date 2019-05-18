@@ -19,6 +19,7 @@ from os import path
 RESIZE = (32, 32)
 IMAGENET_DIR = '/v9/whshin/imagenet/'
 VISIBLE_SUBDIRS = ['train', 'val']
+# VISIBLE_SUBDIRS = ['val']
 RESIZE_FILTER = {
   0: Image.NEAREST,
   1: Image.BILINEAR,
@@ -28,7 +29,7 @@ RESIZE_FILTER = {
 
 IMG_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.ppm', '.bmp',
                   '.pgm', '.tif', '.tiff', '.webp')
-EXIST_OK = False
+EXIST_OK = False  # Enable overwriting if it's set True
 DEBUG = False
 
 
@@ -69,18 +70,18 @@ def process(chunk):
   filepaths, i = chunk
   process_desc = '[Process #%2d] ' % i
   for filepath in tqdm(filepaths, desc=process_desc, position=i):
-    img = Image.open(filepath)
-    img = img.resize(RESIZE, RESIZE_FILTER)
-    # img.show()
-    split_path = path.join('/', *filepath.split('/')[:-2])
-    class_name = filepath.split('/')[-2]
-    split_name = path.basename(split_path)  # train or val
-    split_name_new = split_name + "_{}_{}".format(*RESIZE)
-    split_path_new = path.join(split_path, os.pardir, split_name_new)
-    split_path_new = path.normpath(split_path_new)
-    os.makedirs(path.join(split_path_new, class_name), exist_ok=EXIST_OK)
-    file_path_new = path.join(split_path_new, *filepath.split('/')[-2:])
-    img.save(file_path_new)
+    with Image.open(filepath) as img:
+      img = img.resize(RESIZE, RESIZE_FILTER)
+      split_path = path.join('/', *filepath.split('/')[:-2])
+      class_name = filepath.split('/')[-2]
+      split_name = path.basename(split_path)  # train or val
+      split_name_new = split_name + "_{}_{}".format(*RESIZE)
+      split_path_new = path.join(split_path, os.pardir, split_name_new)
+      split_path_new = path.normpath(split_path_new)
+      os.makedirs(path.join(split_path_new, class_name), exist_ok=EXIST_OK)
+      file_path_new = path.join(split_path_new, *filepath.split('/')[-2:])
+      # img.show()
+      img.save(file_path_new)
   return 1
 
 
