@@ -22,7 +22,7 @@ class IterDataLoader(object):
   without forcibley using iterative loops.
   """
 
-  def __init__(self, dataset, batch_size, num_workers=8, sampler=None):
+  def __init__(self, dataset, batch_size, num_workers=32, sampler=None):
     self.dataset = dataset
     self.dataloader = data.DataLoader(dataset, batch_size, num_workers, sampler)
     self.iterator = iter(self.dataloader)
@@ -77,7 +77,7 @@ class ImageNetData:
       - inner-test data(5K)
   """
 
-  def __init__(self, batch_size=32, fixed=False):
+  def __init__(self, batch_size=64, fixed=False):
     self.fixed = fixed
     self.batch_size = batch_size
     path = '/v9/whshin/imagenet'
