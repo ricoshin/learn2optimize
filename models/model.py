@@ -206,7 +206,6 @@ class Model(nn.Module):
 
     if out is not None:
       out = C(out)
-      import pdb; pdb.set_trace()
       loss = self.loss(inp, out)
       acc = (inp.argmax(dim=1) == out).float().mean()
     else:

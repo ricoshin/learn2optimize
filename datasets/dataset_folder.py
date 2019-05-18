@@ -1,5 +1,6 @@
 import os
 import sys
+from collections import OrderedDict as odict
 from os import path
 
 import numpy as np
@@ -35,7 +36,7 @@ def is_image_file(filename):
 
 
 def make_dataset(dir, class_to_idx, extensions=None, is_valid_file=None):
-  idx_to_samples = {}
+  idx_to_samples = odict()
   dir = os.path.expanduser(dir)
   if not ((extensions is None) ^ (is_valid_file is None)):
     raise ValueError("Both extensions and is_valid_file cannot be None "
@@ -166,22 +167,27 @@ class DatasetFolder(VisionDataset):
   """
 
   def __init__(self, root, loader, extensions=None, transform=None,
-               target_transform=None, is_valid_file=None, load_metadata=True):
+               target_transform=None, is_valid_file=None, load_metadata=False):
     super(DatasetFolder, self).__init__(root)
     self.transform = transform
     self.target_transform = target_transform
 
-    if load_metadata and Metadata.is_loadable(root):
-      metadata = Metadata.load(root)
+    # to be used as postfix of metadata file. e.g. train or val
+    basename = path.basename(root)
+    # save/load metadata to/from parent dir
+    metapath = path.join(root, os.pardir)
+
+    if load_metadata and Metadata.is_loadable(metapath, basename):
+      metadata = Metadata.load(metapath, basename)
     else:
       metadata = self._make_metadata(extensions, is_valid_file)
       if load_metadata:
-        metadata.save(root)
+        metadata.save(metafile, basename)
 
     self.loader = loader
     self.extensions = extensions
-    self.metadata = metadata
-    self.classes = metadata.classes
+    self.meta = metadata
+    # self.classes = metadata.classes
     # self.class_to_idx = metadata.class_to_idx
     # self.idx_to_samples = idx_to_samples
     self._set_samples_n_targets()
@@ -189,9 +195,9 @@ class DatasetFolder(VisionDataset):
   def _set_samples_n_targets(self):
     self.samples = []
     self.targets = []
-    for k, v in self.metadata.idx_to_samples.items():
-      self.samples.extend(v)
-      self.targets.extend(v[1])
+    for idx, sample in self.meta.idx_to_samples.items():
+      self.samples.extend(sample)
+      self.targets.extend([idx] * len(sample))
 
   def _make_metadata(self, extensions, is_valid_file):
     print('Making dataset dictionaries..')
@@ -225,8 +231,8 @@ class DatasetFolder(VisionDataset):
       classes = [d for d in os.listdir(
           dir) if os.path.isdir(os.path.join(dir, d))]
     classes.sort()
-    class_to_idx = {classes[i]: i for i in range(len(classes))}
-    idx_to_class = {i: classes[i] for i in range(len(classes))}
+    class_to_idx = odict({classes[i]: i for i in range(len(classes))})
+    idx_to_class = odict({i: classes[i] for i in range(len(classes))})
     return classes, class_to_idx, idx_to_class
 
   def __getitem__(self, index):

@@ -4,7 +4,7 @@ import os
 import shutil
 
 import torch
-from datasets.customized import ImageFolder
+from datasets.dataset_folder import ImageFolder
 from torchvision.datasets.utils import check_integrity, download_url
 
 ARCHIVE_DICT = {
@@ -56,18 +56,20 @@ class ImageNet(ImageFolder):
 
     if download:
       self.download()
-    wnid_to_classes = self._load_meta_file()[0]
 
     super(ImageNet, self).__init__(self.split_folder, **kwargs)
-    self.root = root
 
-    idcs = [idx for _, idx in self.imgs]
-    self.wnids = self.classes
-    self.wnid_to_idx = {wnid: idx for idx, wnid in enumerate(self.wnids)}
-    self.classes = [wnid_to_classes[wnid] for wnid in self.wnids]
-    self.class_to_idx = {cls: idx
-                         for idx, clss in enumerate(self.classes)
-                         for cls in clss}
+    self.root = root
+    # self.meta.wnids = self.meta.classes
+    # self.meta.wnid_to_idx = self.meta.class_to_idx
+    # self.meta.idx_to_wnid = self.meta.idx_to_class
+    self.meta.class_to_word = self._load_meta_file()[0]
+    # self.meta.classes = [self.meta.wnid_to_class[wnid]
+    #                      for wnid in self.meta.wnids]
+    # self.meta.class_to_idx = {cls: idx
+    #   for idx, clss in enumerate(self.meta.classes) for cls in clss}
+    # self.meta.idx_to_class = {idx: cls
+    #   for idx, clss in enumerate(self.meta.classes) for cls in clss}
 
   def download(self):
     if not check_integrity(self.meta_file):
@@ -94,7 +96,7 @@ class ImageNet(ImageFolder):
         val_wnids = self._load_meta_file()[1]
         prepare_val_folder(self.split_folder, val_wnids)
     else:
-      print(f"Found dataset from a folder '{self.root}'")
+      print(f"Found dataset: '{self.root}'")
 
   @property
   def meta_file(self):
