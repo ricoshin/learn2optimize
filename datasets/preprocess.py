@@ -19,7 +19,6 @@ from os import path
 RESIZE = (32, 32)
 IMAGENET_DIR = '/v9/whshin/imagenet/'
 VISIBLE_SUBDIRS = ['train', 'val']
-# VISIBLE_SUBDIRS = ['val']
 RESIZE_FILTER = {
   0: Image.NEAREST,
   1: Image.BILINEAR,
@@ -66,22 +65,40 @@ def scandir(supdir, subdirs):
   return image_paths
 
 
+def split_path(filepath):
+  """Split full filepath into 4 different chunks.
+    Args:
+      filepath (str): "/../imagenet/train/n01632777/n01632777_1000.JPEG"
+
+    Returns:
+      base (str): '..'
+      dataset (str): 'imagenet'
+      subdirs (str): 'train/n01632777'
+      filename (str): 'n01632777_1000.JPEG'
+  """
+  splits = filepath.split('/')
+  filename = splits[-1]
+  subdirs = path.join(*splits[-3:-1])
+  dataset = splits[-4]
+  base = path.join('/', *splits[:-4])
+  return base, dataset, subdirs, filename
+
+
 def process(chunk):
   filepaths, i = chunk
   process_desc = '[Process #%2d] ' % i
   for filepath in tqdm(filepaths, desc=process_desc, position=i):
     with Image.open(filepath) as img:
+      # processing part
       img = img.resize(RESIZE, RESIZE_FILTER)
-      split_path = path.join('/', *filepath.split('/')[:-2])
-      class_name = filepath.split('/')[-2]
-      split_name = path.basename(split_path)  # train or val
-      split_name_new = split_name + "_{}_{}".format(*RESIZE)
-      split_path_new = path.join(split_path, os.pardir, split_name_new)
-      split_path_new = path.normpath(split_path_new)
-      os.makedirs(path.join(split_path_new, class_name), exist_ok=EXIST_OK)
-      file_path_new = path.join(split_path_new, *filepath.split('/')[-2:])
-      # img.show()
-      img.save(file_path_new)
+      # make new path ready
+      base, dataset, subdirs, filename = split_path(filepath)
+      dataset_new = "_".join([dataset, 'resized', *map(str, RESIZE)])
+      classpath_new = path.join(base, dataset_new, subdirs)
+      os.makedirs(classpath_new, exist_ok=EXIST_OK)
+      filepath_new = path.join(classpath_new, filename)
+      # save resized image
+      img.save(filepath_new)
   return 1
 
 
@@ -92,7 +109,8 @@ def run():
   print(f'VISIBLE_SUB_DIRS: {VISIBLE_SUBDIRS}')
 
   print(f'\nScanning dirs..')
-  paths = scandir(IMAGENET_DIR, VISIBLE_SUBDIRS)
+  subdirs = ['val'] if DEBUG else VISIBLE_SUBDIRS
+  paths = scandir(IMAGENET_DIR, subdirs)
   print('Done.')
 
   num_process = 1 if DEBUG else mp.cpu_count()
