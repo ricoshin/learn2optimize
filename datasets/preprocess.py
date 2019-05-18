@@ -1,4 +1,4 @@
-"""Preprocess the whole dataset in advance, in order to avoid transform
+"""Preprocess ImageNet 1K in advance, in order to avoid transform
 overhead one would have to amortize at each batch collection using dataloader.
 
 Recommend you to install Pillow-SIMD first.
@@ -28,7 +28,7 @@ RESIZE_FILTER = {
 
 IMG_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.ppm', '.bmp',
                   '.pgm', '.tif', '.tiff', '.webp')
-EXIST_OK = True
+EXIST_OK = False
 DEBUG = False
 
 
@@ -84,7 +84,12 @@ def process(chunk):
 
 
 def run():
-  print(f'Scanning dir: {IMAGENET_DIR}')
+  print('Image preprocessing with multi workers.')
+  print(f'RESIZE: {RESIZE}')
+  print(f'IMAGENET_DIR: {IMAGENET_DIR}')
+  print(f'VISIBLE_SUB_DIRS: {VISIBLE_SUBDIRS}')
+
+  print(f'\nScanning dirs..')
   paths = scandir(IMAGENET_DIR, VISIBLE_SUBDIRS)
   print('Done.')
 
