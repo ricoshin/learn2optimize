@@ -2,27 +2,29 @@ from __future__ import print_function
 
 import os
 import shutil
+from os import path
 
 import torch
 from datasets.dataset_folder import ImageFolder
+from datasets.dataset_helpers import Metadata
 from torchvision.datasets.utils import check_integrity, download_url
 
 ARCHIVE_DICT = {
-  'train': {
-    'url': 'http://www.image-net.org/challenges/LSVRC/2012/nnoupb/'
-           'ILSVRC2012_img_train.tar',
-    'md5': '1d675b47d978889d74fa0da5fadfb00e',
-  },
-  'val': {
-    'url': 'http://www.image-net.org/challenges/LSVRC/2012/nnoupb/'
-           'ILSVRC2012_img_val.tar',
-    'md5': '29b22e2961454d5413ddabcf34fc5622',
-  },
-  'devkit': {
-    'url': 'http://www.image-net.org/challenges/LSVRC/2012/nnoupb/'
-           'ILSVRC2012_devkit_t12.tar.gz',
-    'md5': 'fa75699e90414af021442c21a62c3abf',
-  }
+    'train': {
+        'url': 'http://www.image-net.org/challenges/LSVRC/2012/nnoupb/'
+        'ILSVRC2012_img_train.tar',
+        'md5': '1d675b47d978889d74fa0da5fadfb00e',
+    },
+    'val': {
+        'url': 'http://www.image-net.org/challenges/LSVRC/2012/nnoupb/'
+        'ILSVRC2012_img_val.tar',
+        'md5': '29b22e2961454d5413ddabcf34fc5622',
+    },
+    'devkit': {
+        'url': 'http://www.image-net.org/challenges/LSVRC/2012/nnoupb/'
+        'ILSVRC2012_devkit_t12.tar.gz',
+        'md5': 'fa75699e90414af021442c21a62c3abf',
+    }
 }
 
 
@@ -50,20 +52,36 @@ class ImageNet(ImageFolder):
     targets (list): The class_index value for each image in the dataset
   """
 
-  def __init__(self, root, split='train', download=False, **kwargs):
+  def __init__(self, root, visible_subdirs=None, download=False,
+               rebuild_metadata=True, **kwargs):
     root = self.root = os.path.expanduser(root)
-    self.split = self._verify_split(split)
+    if visible_subdirs is None:
+      self.visible_subdirs = valid_subdirs
+    else:
+      self.visible_subdirs = self._verify_subdirs(visible_subdirs)
+
+    # self.split = self._verify_split(split)
 
     if download:
       self.download()
 
-    super(ImageNet, self).__init__(self.split_folder, **kwargs)
+    # metadata = Metadata.load_or_make(
+    #     meta_dir=path.join(root, os.pardir),
+    #     name=path.basename(root),
+    #     remake=rebuild_metadata,
+    #     data_dir=root,
+    #     extensions=extensions,
+    #     is_valid_file=is_valid_file
+    # ).to_imagenet(self._load_devkit_metafile()[:-1])
 
-    self.root = root
+    super(ImageNet, self).__init__(
+      root, visible_subdirs=visible_subdirs, **kwargs)
+    self.root = root  # FIX LATER: to recover the original path
+    self.meta.to_imagenet(*self._load_devkit_metafile()[:-1])
+
     # self.meta.wnids = self.meta.classes
     # self.meta.wnid_to_idx = self.meta.class_to_idx
     # self.meta.idx_to_wnid = self.meta.idx_to_class
-    self.meta.class_to_word = self._load_meta_file()[0]
     # self.meta.classes = [self.meta.wnid_to_class[wnid]
     #                      for wnid in self.meta.wnids]
     # self.meta.class_to_idx = {cls: idx
@@ -72,60 +90,63 @@ class ImageNet(ImageFolder):
     #   for idx, clss in enumerate(self.meta.classes) for cls in clss}
 
   def download(self):
-    if not check_integrity(self.meta_file):
-      tmpdir = os.path.join(self.root, 'tmp')
+    if not os.path.isfile(self.devkit_metafile):
       archive_dict = ARCHIVE_DICT['devkit']
-      download_and_extract_tar(archive_dict['url'], self.root,
-                               extract_root=tmpdir,
-                               md5=archive_dict['md5'])
       devkit_folder = _splitexts(os.path.basename(archive_dict['url']))[0]
-      meta = parse_devkit(os.path.join(tmpdir, devkit_folder))
-      self._save_meta_file(*meta)
+      devkit_dir = path.join(self.root, devkit_folder)
+      if not path.isdir(devkit_dir):
+        download_and_extract_tar(archive_dict['url'], self.root,
+                                 extract_root=self.root,
+                                 md5=archive_dict['md5'])
+      meta = parse_devkit(os.path.join(self.root, devkit_folder))
+      self._save_devkit_metafile(*meta)
+      # shutil.rmtree(tmpdir)
 
-      shutil.rmtree(tmpdir)
+    for split_name in self.visible_subdirs:
+      split_path = path.join(self.root, split_name)
+      if not os.path.isdir(split_path):
+        archive_dict = ARCHIVE_DICT[split_name]
+        download_and_extract_tar(archive_dict['url'], self.root,
+                                 extract_root=split_path,
+                                 md5=archive_dict['md5'])
 
-    if not os.path.isdir(self.split_folder):
-      archive_dict = ARCHIVE_DICT[self.split]
-      download_and_extract_tar(archive_dict['url'], self.root,
-                               extract_root=self.split_folder,
-                               md5=archive_dict['md5'])
-
-      if self.split == 'train':
-        prepare_train_folder(self.split_folder)
-      elif self.split == 'val':
-        val_wnids = self._load_meta_file()[1]
-        prepare_val_folder(self.split_folder, val_wnids)
-    else:
-      print(f"Found dataset: '{self.root}'")
+        if split_name == 'train':
+          prepare_train_folder(split_path)
+        elif split_name == 'val':
+          val_wnids = self._load_devkit_metafile()[-1]
+          prepare_val_folder(split_path, val_wnids)
+      else:
+        print(f"Found downloaded dataset: '{self.root}'")
 
   @property
-  def meta_file(self):
+  def devkit_metafile(self):
     return os.path.join(self.root, 'meta.bin')
 
-  def _load_meta_file(self):
-    if check_integrity(self.meta_file):
-      return torch.load(self.meta_file)
+  def _load_devkit_metafile(self):
+    if check_integrity(self.devkit_metafile):
+      devkit_metafile = torch.load(self.devkit_metafile)
+      print(f'Loaded devkit metafile: {self.devkit_metafile}')
+      return devkit_metafile
     else:
       raise RuntimeError("Meta file not found or corrupted.",
                          "You can use download=True to create it.")
 
-  def _save_meta_file(self, wnid_to_class, val_wnids):
-    torch.save((wnid_to_class, val_wnids), self.meta_file)
+  def _save_devkit_metafile(self, *args):
+    torch.save(args, self.devkit_metafile)
+    print(f'Saved metafile: {self.devkit_metafile}')
 
-  def _verify_split(self, split):
-    if split not in self.valid_splits:
-      msg = "Unknown split {} .".format(split)
-      msg += "Valid splits are {{}}.".format(", ".join(self.valid_splits))
-      raise ValueError(msg)
-    return split
+  def _verify_subdirs(self, subdirs):
+    assert len(subdirs) > 0
+    for subdir in subdirs:
+      if subdir not in self.valid_subdirs:
+        msg = "Unknown data split {} .".format(subdir)
+        msg += "Valid splits are {{}}.".format(", ".join(self.valid_splits))
+        raise ValueError(msg)
+    return subdirs
 
   @property
-  def valid_splits(self):
+  def valid_subdirs(self):
     return 'train', 'val'
-
-  @property
-  def split_folder(self):
-    return os.path.join(self.root, self.split)
 
   def extra_repr(self):
     return "Split: {split}".format(**self.__dict__)
@@ -141,12 +162,7 @@ def extract_tar(src, dest=None, gzip=None, delete=False):
 
   mode = 'r:gz' if gzip else 'r'
   with tarfile.open(src, mode) as tarfh:
-    tarfh.extractall(path=dest, members=track_progress(tarball))
-
-  def track_progress(members):
-    for member in members:
-      # this will be the current file being extracted
-      yield member
+    tarfh.extractall(path=dest)
 
   if delete:
     os.remove(src)
@@ -167,10 +183,10 @@ def download_and_extract_tar(url, download_root, extract_root=None,
 
 
 def parse_devkit(root):
-  idx_to_wnid, wnid_to_classes = parse_meta(root)
+  classes, wnid_to_classes, class_to_wnid, idx_to_wnid = parse_meta(root)
   val_idcs = parse_val_groundtruth(root)
   val_wnids = [idx_to_wnid[idx] for idx in val_idcs]
-  return wnid_to_classes, val_wnids
+  return classes, wnid_to_classes, class_to_wnid, val_wnids
 
 
 def parse_meta(devkit_root, path='data', filename='meta.mat'):
@@ -184,7 +200,8 @@ def parse_meta(devkit_root, path='data', filename='meta.mat'):
   classes = [tuple(clss.split(', ')) for clss in classes]
   idx_to_wnid = {idx: wnid for idx, wnid in zip(idcs, wnids)}
   wnid_to_classes = {wnid: clss for wnid, clss in zip(wnids, classes)}
-  return idx_to_wnid, wnid_to_classes
+  class_to_wnid = {clss: wnid for wnid, clss in zip(wnids, classes)}
+  return classes, wnid_to_classes, class_to_wnid, idx_to_wnid
 
 
 def parse_val_groundtruth(devkit_root, path='data',

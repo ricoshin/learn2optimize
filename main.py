@@ -16,7 +16,7 @@ logger = logging.getLogger('main')
 C = utils.getCudaManager('default')
 
 parser = argparse.ArgumentParser(description='Pytorch implementation of L2L')
-parser.add_argument('--problem', type=str, default='mnist',
+parser.add_argument('--problem', type=str, default='imagenet',
                     choices=['debug', 'quadratic', 'mnist', 'imagenet'],
                     help='problem for the optimizee to solve')
 # parser.add_argument('--optimizer', type=str, default='lstm',
@@ -42,7 +42,7 @@ parser.add_argument('--volatile', action='store_true',
 parser.add_argument('--meta_optim', type=str, default='SGD')
 parser.add_argument('--lr', type=float, default=1.0)
 parser.add_argument('--train_optim', nargs='*', type=str,
-                    default=['obsrv_multi'])
+                    default=['obsrv_single'])
 parser.add_argument('--test_optim', nargs='*', type=str,
                     default=[])
 parser.add_argument('--no_mask', action='store_true')

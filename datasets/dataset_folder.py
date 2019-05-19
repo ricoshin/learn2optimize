@@ -14,11 +14,11 @@ def has_file_allowed_extension(filename, extensions):
   """Checks if a file is an allowed extension.
 
   Args:
-      filename (string): path to a file
-      extensions (tuple of strings): extensions to consider (lowercase)
+    filename (string): path to a file
+    extensions (tuple of strings): extensions to consider (lowercase)
 
   Returns:
-      bool: True if the filename ends with one of given extensions
+    bool: True if the filename ends with one of given extensions
   """
   return filename.lower().endswith(extensions)
 
@@ -27,10 +27,10 @@ def is_image_file(filename):
   """Checks if a file is an allowed image extension.
 
   Args:
-      filename (string): path to a file
+    filename (string): path to a file
 
   Returns:
-      bool: True if the filename ends with a known image extension
+    bool: True if the filename ends with a known image extension
   """
   return has_file_allowed_extension(filename, IMG_EXTENSIONS)
 
@@ -167,26 +167,27 @@ class DatasetFolder(VisionDataset):
   """
 
   def __init__(self, root, loader, extensions=None, transform=None,
-               target_transform=None, is_valid_file=None, load_metadata=False):
+               target_transform=None, is_valid_file=None, meta_data=None,
+               remake=False, visible_subdirs=None, load_all_at_once=False):
     super(DatasetFolder, self).__init__(root)
     self.transform = transform
     self.target_transform = target_transform
-
-    # to be used as postfix of metadata file. e.g. train or val
-    basename = path.basename(root)
-    # save/load metadata to/from parent dir
-    metapath = path.join(root, os.pardir)
-
-    if load_metadata and Metadata.is_loadable(metapath, basename):
-      metadata = Metadata.load(metapath, basename)
-    else:
-      metadata = self._make_metadata(extensions, is_valid_file)
-      if load_metadata:
-        metadata.save(metafile, basename)
-
+    self.load_all_at_once = load_all_at_once
     self.loader = loader
     self.extensions = extensions
-    self.meta = metadata
+    if meta_data is not None and not remake:
+      self.meta = meta_data
+    else:
+      # generate new meta data or load if posiible
+      self.meta = Metadata.load_or_make(
+        meta_dir=path.join(root, os.pardir),
+        name=path.basename(root),
+        remake=remake,
+        data_dir=root,
+        visible_subdirs=visible_subdirs,
+        extensions=extensions,
+        is_valid_file=is_valid_file,
+      )
     # self.classes = metadata.classes
     # self.class_to_idx = metadata.class_to_idx
     # self.idx_to_samples = idx_to_samples
@@ -216,14 +217,14 @@ class DatasetFolder(VisionDataset):
     Finds the class folders in a dataset.
 
     Args:
-        dir (string): Root directory path.
+      dir (string): Root directory path.
 
     Returns:
-        tuple: (classes, class_to_idx) where classes are relative to (dir),
-          and class_to_idx is a dictionary.
+      tuple: (classes, class_to_idx) where classes are relative to (dir),
+        and class_to_idx is a dictionary.
 
     Ensures:
-        No class is a subdirectory of another.
+      No class is a subdirectory of another.
     """
     if sys.version_info >= (3, 5):
         # Faster and available in Python 3.5 and above
@@ -239,10 +240,10 @@ class DatasetFolder(VisionDataset):
   def __getitem__(self, index):
     """
     Args:
-        index (int): Index
+      index (int): Index
 
     Returns:
-        tuple: (sample, target) where target is class_index of the target class.
+      tuple: (sample, target) where target is class_index of the target class.
     """
     path, target = self.samples[index]
     sample = self.loader(path)
@@ -276,8 +277,8 @@ class ImageFolder(DatasetFolder):
     root (string): Root directory path.
     transform (callable, optional): A function/transform that  takes in an PIL
       image and returns a transformed version. E.g, ``transforms.RandomCrop``
-    target_transform (callable, optional): A function/transform that takes in the
-      target and transforms it.
+    target_transform (callable, optional): A function/transform that takes in
+      the target and transforms it.
     loader (callable, optional): A function to load an image given its path.
     is_valid_file (callable, optional): A function that takes path of an Image
       file and check if the file is a valid_file (used to check of corrupt
@@ -290,12 +291,14 @@ class ImageFolder(DatasetFolder):
   """
 
   def __init__(self, root, transform=None, target_transform=None,
-               loader=default_loader, is_valid_file=None):
+               loader=default_loader, visible_subdirs=None,
+               is_valid_file=None):
     extensions = IMG_EXTENSIONS if is_valid_file is None else None
     super(ImageFolder, self).__init__(root=root,
                                       loader=loader,
                                       extensions=extensions,
                                       transform=transform,
                                       target_transform=target_transform,
+                                      visible_subdirs=None,
                                       is_valid_file=is_valid_file)
     self.imgs = self.samples

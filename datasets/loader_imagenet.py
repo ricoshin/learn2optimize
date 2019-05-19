@@ -24,7 +24,8 @@ class IterDataLoader(object):
 
   def __init__(self, dataset, batch_size, num_workers=8, sampler=None):
     self.dataset = dataset
-    self.dataloader = data.DataLoader(dataset, batch_size, num_workers, sampler)
+    self.dataloader = data.DataLoader(
+        dataset, batch_size, num_workers, sampler)
     self.iterator = iter(self.dataloader)
 
   def __len__(self):
@@ -80,22 +81,23 @@ class ImageNetData:
   def __init__(self, batch_size=64, fixed=False):
     self.fixed = fixed
     self.batch_size = batch_size
-    path = '/v9/whshin/imagenet_resized_32_32'
-    print(f'Data loading from: {path}')
+    path = '/v9/whshin/imagenet'
+    # path = '/v9/whshin/imagenet_resized_32_32'
+    print(f'Dataset path: {path}')
     # path ='./imagenet'
     composed_transforms = transforms.Compose([
-      # transforms.RandomResizedCrop(32),
-      # transforms.Resize([32, 32], interpolation=2),
-      # transforms.RandomHorizontalFlip(0.5),
-      transforms.ToTensor(),
+        # transforms.RandomResizedCrop(32),
+        # transforms.Resize([32, 32], interpolation=2),
+        # transforms.RandomHorizontalFlip(0.5),
+        transforms.ToTensor(),
     ])
-    train_data = ImageNet(path, split='train', download=True,
+    train_data = ImageNet(path, visible_subdirs=['train', 'val'], download=True,
                           transform=composed_transforms)
     # test_data = ImageNet(path, split='val', download=True,
     #                      transform=composed_transforms)
     # import pdb; pdb.set_trace()
     self.m_train_d, self.m_valid_d, self.m_test_d = \
-      self._meta_data_split(train_data)  # , test_data)
+        self._meta_data_split(train_data)  # , test_data)
     self.meta_train = self.meta_valid = self.meta_test = {}
 
   def sample_meta_train(self, n_sample=10, split_ratio=0.75, fixed=None):
@@ -134,7 +136,7 @@ class ImageNetData:
         inner_test, self.batch_size)
     return self.meta_test
 
-  def _meta_data_split(self, train_data):#, test_data):
+  def _meta_data_split(self, train_data):  # , test_data):
     # whole_data = ConcatDatasetFolder([train_data, test_data])
     meta_train, meta_valid_test = SubsetClass.split(train_data, 600 / 1000)
     meta_valid, meta_test = SubsetClass.split(meta_valid_test, 200 / 400)
