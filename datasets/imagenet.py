@@ -5,8 +5,8 @@ import shutil
 from os import path
 
 import torch
-from datasets.dataset_folder import ImageFolder
-from datasets.dataset_helpers import Metadata
+from datasets.datasets import ImageDatasetClassSampler
+from datasets.metadata import Metadata
 from torchvision.datasets.utils import check_integrity, download_url
 
 ARCHIVE_DICT = {
@@ -28,7 +28,7 @@ ARCHIVE_DICT = {
 }
 
 
-class ImageNet(ImageFolder):
+class ImageNet(ImageDatasetClassSampler):
   """`ImageNet <http://image-net.org/>`_ 2012 Classification Dataset.
 
   Args:
@@ -52,14 +52,14 @@ class ImageNet(ImageFolder):
     targets (list): The class_index value for each image in the dataset
   """
 
-  def __init__(self, root, visible_subdirs=None, download=False,
+  def __init__(self, root, splits=None, download=False,
                rebuild_metadata=True, **kwargs):
     root = self.root = os.path.expanduser(root)
-    if visible_subdirs is None:
-      self.visible_subdirs = valid_subdirs
+    if splits is None:
+      splits = self.valid_splits
     else:
-      self.visible_subdirs = self._verify_subdirs(visible_subdirs)
-
+      splits = self._verify_splits(splits)
+    self.splits = splits
     # self.split = self._verify_split(split)
 
     if download:
@@ -74,8 +74,7 @@ class ImageNet(ImageFolder):
     #     is_valid_file=is_valid_file
     # ).to_imagenet(self._load_devkit_metafile()[:-1])
 
-    super(ImageNet, self).__init__(
-      root, visible_subdirs=visible_subdirs, **kwargs)
+    super(ImageNet, self).__init__(root, visible_subdirs=splits, **kwargs)
     self.root = root  # FIX LATER: to recover the original path
     self.meta.to_imagenet(*self._load_devkit_metafile()[:-1])
 
@@ -102,21 +101,21 @@ class ImageNet(ImageFolder):
       self._save_devkit_metafile(*meta)
       # shutil.rmtree(tmpdir)
 
-    for split_name in self.visible_subdirs:
-      split_path = path.join(self.root, split_name)
+    for split in self.splits:
+      split_path = path.join(self.root, split)
       if not os.path.isdir(split_path):
-        archive_dict = ARCHIVE_DICT[split_name]
+        archive_dict = ARCHIVE_DICT[split]
         download_and_extract_tar(archive_dict['url'], self.root,
                                  extract_root=split_path,
                                  md5=archive_dict['md5'])
 
-        if split_name == 'train':
+        if split == 'train':
           prepare_train_folder(split_path)
-        elif split_name == 'val':
+        elif split == 'val':
           val_wnids = self._load_devkit_metafile()[-1]
           prepare_val_folder(split_path, val_wnids)
       else:
-        print(f"Found downloaded dataset: '{self.root}'")
+        print(f"Found downloaded dataset: '{split_path}'")
 
   @property
   def devkit_metafile(self):
@@ -135,21 +134,21 @@ class ImageNet(ImageFolder):
     torch.save(args, self.devkit_metafile)
     print(f'Saved metafile: {self.devkit_metafile}')
 
-  def _verify_subdirs(self, subdirs):
-    assert len(subdirs) > 0
-    for subdir in subdirs:
-      if subdir not in self.valid_subdirs:
-        msg = "Unknown data split {} .".format(subdir)
+  def _verify_splits(self, splits):
+    assert len(splits) > 0
+    for split in splits:
+      if split not in self.valid_splits:
+        msg = "Unknown data split {} .".format(split)
         msg += "Valid splits are {{}}.".format(", ".join(self.valid_splits))
         raise ValueError(msg)
-    return subdirs
+    return splits
 
   @property
-  def valid_subdirs(self):
-    return 'train', 'val'
+  def valid_splits(self):
+    return ('train', 'val')
 
   def extra_repr(self):
-    return "Split: {split}".format(**self.__dict__)
+    return "Splits: {splits}".format(**self.__dict__)
 
 
 def extract_tar(src, dest=None, gzip=None, delete=False):

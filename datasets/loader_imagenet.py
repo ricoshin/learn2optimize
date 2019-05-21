@@ -6,7 +6,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
-from datasets.dataset_helpers import ConcatDatasetFolder, SubsetClass
 from datasets.imagenet import ImageNet
 from models.meprop import SBLinear, UnifiedSBLinear
 from models.model_helpers import ParamsFlattener
@@ -22,10 +21,11 @@ class IterDataLoader(object):
   without forcibley using iterative loops.
   """
 
-  def __init__(self, dataset, batch_size, num_workers=8, sampler=None):
+  def __init__(self, dataset, batch_size, sampler=None):
     self.dataset = dataset
+    self.sampler = sampler
     self.dataloader = data.DataLoader(
-        dataset, batch_size, num_workers, sampler)
+        dataset, batch_size, sampler)
     self.iterator = iter(self.dataloader)
 
   def __len__(self):
@@ -41,6 +41,7 @@ class IterDataLoader(object):
       except AttributeError:
         import pdb
         pdb.set_trace()
+        print('a')
     else:
       return next(self.iterator)
 
@@ -66,22 +67,22 @@ class IterDataLoader(object):
 
 
 class ImageNetData:
-  """Current data scheme is as follows:
-    - meta-train data(30K)
-      - inner-train data(15K)
-      - inner-test data(15K)
-    - meta-valid data(20K)
-      - inner-train data(15K)
-      - inner-test data(5K)
-    - meta-test data(20K)
-      - inner-train data(15K)
-      - inner-test data(5K)
+  """ImageNet 1K dataset:
+    - meta-train data(600 classes -> 10 sampling)
+      - inner-train data(75% for each class)
+      - inner-test data(35% for each class)
+    - meta-valid data(200 classes -> 10 sampling)
+      - inner-train data(75% for each class)
+      - inner-test data(35% for each class)
+    - meta-test data(200 classes -> 10 sampling)
+      - inner-train data(75% for each class)
+      - inner-test data(35% for each class)
   """
 
   def __init__(self, batch_size=64, fixed=False):
     self.fixed = fixed
     self.batch_size = batch_size
-    path = '/v9/whshin/imagenet'
+    path = '/v9/whshin/imagenet_resized_32_32'
     # path = '/v9/whshin/imagenet_resized_32_32'
     print(f'Dataset path: {path}')
     # path ='./imagenet'
@@ -89,23 +90,22 @@ class ImageNetData:
         # transforms.RandomResizedCrop(32),
         # transforms.Resize([32, 32], interpolation=2),
         # transforms.RandomHorizontalFlip(0.5),
-        transforms.ToTensor(),
+        # transforms.ToTensor(),
     ])
-    train_data = ImageNet(path, visible_subdirs=['train', 'val'], download=True,
+    whole_data = ImageNet(path, splits=['train', 'val'], download=True,
                           transform=composed_transforms)
     # test_data = ImageNet(path, split='val', download=True,
     #                      transform=composed_transforms)
-    # import pdb; pdb.set_trace()
     self.m_train_d, self.m_valid_d, self.m_test_d = \
-        self._meta_data_split(train_data)  # , test_data)
+        self._meta_data_split(whole_data)  # , test_data)
     self.meta_train = self.meta_valid = self.meta_test = {}
 
-  def sample_meta_train(self, n_sample=10, split_ratio=0.75, fixed=None):
+  def sample_meta_train(self, n_sample=10, ratio=0.75, fixed=None):
     fixed = fixed if fixed is not None else self.fixed
     if fixed and self.meta_train:
       return self.meta_train
-    m_train_sampled = SubsetClass.random_sample(self.m_train_d, n_sample)
-    inner_train, inner_test = self._random_split(m_train_sampled, split_ratio)
+    m_train_sampled = self.m_train_d.class_sample(n_sample, preload=True)
+    inner_train, inner_test = m_train_sampled.intra_class_split(ratio, True)
     self.meta_train['in_train'] = IterDataLoader.from_dataset(
         inner_train, self.batch_size)
     self.meta_train['in_test'] = IterDataLoader.from_dataset(
@@ -116,8 +116,8 @@ class ImageNetData:
     fixed = fixed if fixed is not None else self.fixed
     if fixed and self.meta_valid:
       return self.meta_valid
-    m_valid_sampled = SubsetClass.random_sample(self.m_valid_d, n_sample)
-    inner_train, inner_test = self._random_split(m_valid_sampled, splitratio)
+    m_valid_sampled = self.m_valid_d.class_sample(n_sample)
+    inner_train, inner_test = m_valid_sampled.intra_class_split(ratio, True)
     self.meta_valid['in_train'] = IterDataLoader.from_dataset(
         inner_train, self.batch_size)
     self.meta_valid['in_test'] = IterDataLoader.from_dataset(
@@ -128,18 +128,19 @@ class ImageNetData:
     fixed = fixed if fixed is not None else self.fixed
     if fixed and self.meta_test:
       return self.meta_test
-    m_test_sampled = SubsetClass.random_sample(self.m_test_d, n_sample)
-    inner_train, inner_test = self._random_split(m_test_sampled, split_ratio)
+    m_test_sampled = self.m_test_d.class_sample(n_sample)
+    inner_train, inner_test = m_test_sampled.intra_class_split(ratio, True)
     self.meta_test['in_train'] = IterDataLoader.from_dataset(
         inner_train, self.batch_size)
     self.meta_test['in_test'] = IterDataLoader.from_dataset(
         inner_test, self.batch_size)
     return self.meta_test
 
-  def _meta_data_split(self, train_data):  # , test_data):
+  def _meta_data_split(self, meta_data):  # , test_data):
     # whole_data = ConcatDatasetFolder([train_data, test_data])
-    meta_train, meta_valid_test = SubsetClass.split(train_data, 600 / 1000)
-    meta_valid, meta_test = SubsetClass.split(meta_valid_test, 200 / 400)
+    meta_train, meta_valid_test = meta_data.inter_class_split(
+        600 / 1000, False)
+    meta_valid, meta_test = meta_valid_test.inter_class_split(200 / 400, False)
     return meta_train, meta_valid, meta_test
 
   def _random_split(self, dataset, ratio=0.5):

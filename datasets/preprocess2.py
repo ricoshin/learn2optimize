@@ -8,21 +8,27 @@ Recommend you to install Pillow-SIMD first.
 import multiprocessing as mp
 import os
 import sys
+import time
+from collections import OrderedDict as odict
 from os import path
 from time import sleep
 
 import PIL
 import torch
+from metadata import Metadata
 from PIL import Image
 from torchvision import transforms
 from tqdm import tqdm
 
 RESIZE = (32, 32)
-IMAGENET_DIR = '/v9/whshin/imagenet'
-# VISIBLE_SUBDIRS = ['train', 'val']
-VISIBLE_SUBDIRS = ['val']
+IMAGENET_DIR = '/v9/whshin/imagenet_resized_32_32'
+VISIBLE_SUBDIRS = ['train', 'val']
+# VISIBLE_SUBDIRS = [val']
+SAVE_IMAGE = False
+SAVE_BIN = True
+REBUILD_METADATA = False
 NEW_DIR_POSTFIX = 'test'
-PASS_IF_EXIST = True
+PASS_IF_EXIST = False
 DEBUG = False
 MAX_N_PROCESS = 9999
 
@@ -36,13 +42,23 @@ RESIZE_FILTER = {
 IMG_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.ppm', '.bmp',
                   '.pgm', '.tif', '.tiff', '.webp')
 
+assert (SAVE_IMAGE is False) ^ (SAVE_BIN is False)
+
 
 def is_image_file(filepath):
   return filepath.lower().endswith(IMG_EXTENSIONS)
 
 
 def chunkify(list_, n):
-  return [[list_[i::n], i] for i in range(n)]
+  return [list_[i::n] for i in range(n)]
+
+
+def chunkify_classes(meta, n):
+  idx_chunks = chunkify(list(meta.idx_to_samples.keys()), n)
+  chunks = []
+  for k, idx in enumerate(idx_chunks):
+    chunks.append([odict({i: meta.idx_to_samples[i] for i in idx}), k])
+  return chunks
 
 
 def scandir(supdir, subdirs):
@@ -90,100 +106,70 @@ def split_path(filepath):
 
 
 def process(chunk):
-  filepaths, i = chunk
-
+  idx_to_samples, i = chunk
   composed_transforms = transforms.Compose([
       # transforms.RandomResizedCrop(32),
       # transforms.RandomHorizontalFlip(0.5),
-      transforms.Resize(RESIZE, interpolation=RESIZE_FILTER),
+      # transforms.Resize(RESIZE, interpolation=RESIZE_FILTER),
       # transforms.ToTensor(),
   ])
-
+  to_tensor = transforms.ToTensor()
   saved = 0
   passed = 0
   error_msgs = []
-  process_desc = '[Process #%2d] ' % i
+  total = sum([len(v) for v in idx_to_samples.values()])
+  pbar = tqdm(desc='[Process #%2d] ' % i, position=i, total=total)
+  for _, samples in idx_to_samples.items():
+    tensors = []
+    for filepath, idx in samples:
+      pbar.update(1)
+      # make new path ready
+      base, dataset, subdirs, filename = split_path(filepath)
+      dataset_new = "_".join([dataset, NEW_DIR_POSTFIX, *map(str, RESIZE)])
+      classpath_new = path.join(base, dataset_new, subdirs)
 
-  for filepath in tqdm(filepaths, desc=process_desc, position=i):
-    # make new path ready
-    base, dataset, subdirs, filename = split_path(filepath)
-    dataset_new = "_".join([dataset, NEW_DIR_POSTFIX, *map(str, RESIZE)])
-    classpath_new = path.join(base, dataset_new, subdirs)
-    os.makedirs(classpath_new, exist_ok=True)
-    filepath_new = path.join(classpath_new, filename)
-    # save resized image
-    if os.path.exists(filepath_new) and PASS_IF_EXIST:
-      passed += 1
-      continue  # or not
-    # processing part
-    try:
-      transform_image(
-          path_old=filepath,
-          path_new=filepath_new,
-          transforms=composed_transforms,
-      )
-      saved += 1
-    except Exception as e:
-      error_msgs.append(f"[{filepath}: {e})")
+      filepath_new = path.join(classpath_new, filename)
+      # save resized image
+      if os.path.exists(filepath_new) and PASS_IF_EXIST:
+        passed += 1
+        continue  # or not
+      # processing part
+      try:
+        image = transform_image(
+            path_old=filepath,
+            path_new=filepath_new,
+            transforms=composed_transforms,
+            save_image=SAVE_IMAGE,
+        )
+        saved += 1
+      except Exception as e:
+        error_msgs.append(f"[{filepath}: {e})")
+
+      if SAVE_BIN:
+        tensors.append(to_tensor((image, idx))
+
+    if SAVE_BIN:
+      tensors = torch.stack(tensors)
+      classname = path.basename(subdirs)
+      bin_path = path.join(base, dataset_new, 'bin')
+      os.makedirs(bin_path, exist_ok=True)
+      with open(path.join(bin_path, classname + '.pt'), 'wb') as f:
+        torch.save(tensors, f)
 
   return (saved, passed, error_msgs)
 
 
-def transform_image(path_old, path_new, transforms=None):
+def transform_image(path_old, path_new, transforms=None, save_image=True):
   with Image.open(path_old) as img:
     img = img.convert("RGB")  # there are a few RGBA images
     img = transforms(img)
-    if isinstance(img, Image.Image):
-      img.save(path_new)
-    elif isinstance(img, torch.Tensor):
-      with open(path_new, 'wb') as f:
+    if save_image:
+      os.makedirs(path_new, exist_ok=True)
+      if isinstance(img, Image.Image):
+        img.save(path_new)
+      elif isinstance(img, torch.Tensor):
         torch.save(path_new)
-
-
-def make_dataset(dir, class_to_idx):
-  idx_to_samples = odict()
-  dir = os.path.expanduser(dir)
-  if not ((extensions is None) ^ (is_valid_file is None)):
-    raise ValueError("Both extensions and is_valid_file cannot be None "
-                     "or not None at the same time")
-  if extensions is not None:
-    def is_valid_file(x):
-      return has_file_allowed_extension(x, extensions)
-  for target in sorted(class_to_idx.keys()):
-    samples = []
-    d = os.path.join(dir, target)
-    idx = class_to_idx[target]
-    if not os.path.isdir(d):
-      continue
-    for root, _, fnames in sorted(os.walk(d)):
-      for fname in sorted(fnames):
-        path = os.path.join(root, fname)
-        if is_valid_file(path):
-          samples.append((path, idx))
-    idx_to_samples[idx] = samples
-  return idx_to_samples
-
-
-def make_metadata(self):
-  print('Making dataset dictionaries..')
-  classes, class_to_idx, idx_to_class = self._find_classes(self.root)
-  idx_to_samples = make_dataset(
-      self.root, class_to_idx, extensions, is_valid_file)
-  if any([len(v) == 0 for v in idx_to_samples.values()]):
-    raise (RuntimeError(
-        "Found 0 files in subfolders of: " + self.root + "\n"
-        "Supported extensions are: " + ",".join(extensions)))
-  print('Done!')
-  return Metadata(classes, class_to_idx, idx_to_class, idx_to_samples)
-
-
-def load_metadata(metapath, basename):
-  if Metadata.is_loadable(metapath, basename):
-    metadata = Metadata.load(metapath, basename)
-  else:
-    metadata = self.make_metadata(extensions, is_valid_file)
-    if load_metadata:
-      metadata.save(metafile, basename)
+  return img
 
 
 def run():
@@ -193,15 +179,27 @@ def run():
   print(f"VISIBLE_SUB_DIRS: {VISIBLE_SUBDIRS}")
   print(f"DEBUG_MODE: {'ON' if DEBUG else 'OFF'}")
 
+  print("Warming up tqdm.")
+
+  for _ in tqdm(range(10)):
+    time.sleep(0.1)
+
   print(f'\nScanning dirs..')
-  subdirs = ['val'] if DEBUG else VISIBLE_SUBDIRS
-  paths = scandir(IMAGENET_DIR, subdirs)
-  n_images = len(paths)
-  print(f'Done. {n_images} images are found.')
+  meta = Metadata.load_or_make(
+      # meta_dir=path.join(root, os.pardir),
+      remake=REBUILD_METADATA,
+      data_dir=IMAGENET_DIR,
+      visible_subdirs=['val'] if DEBUG else VISIBLE_SUBDIRS,
+      extensions=IMG_EXTENSIONS,
+  )
+
+  n_classes = len([v for v in meta.idx_to_samples])
+  n_images = sum([len(v) for v in meta.idx_to_samples.values()])
+  print(f'Done. {n_classes} classes and {n_images} images are found.')
 
   num_process = 1 if DEBUG else min(mp.cpu_count(), MAX_N_PROCESS)
   # num_process = mp.cpu_count()
-  chunks = chunkify(paths, num_process)
+  chunks = chunkify_classes(meta, num_process)
 
   if DEBUG:
     print('Start single processing for debugging.')
@@ -212,7 +210,9 @@ def run():
     results = pool.map(process, chunks)
     pool.close()  # no more task
     pool.join()  # wrap up current tasks
-    print("Preprocessing completed.")
+
+  print("Preprocessing completed.")
+  print('\n' * num_process)
 
   saved_total = 0
   passed_total = 0
@@ -229,7 +229,7 @@ def run():
   logfile_name = 'errors.txt'
   base = path.normpath(path.join(IMAGENET_DIR, os.pardir))
   dataset = path.basename(IMAGENET_DIR)
-  dataset = "_".join([dataset, 'resize', *map(str, RESIZE)])
+  dataset = "_".join([dataset, NEW_DIR_POSTFIX, *map(str, RESIZE)])
   logfile_path = path.join(base, dataset, logfile_name)
   with open(logfile_path, 'w') as f:
     for i, error_msg in enumerate(error_msgs_total):
@@ -237,7 +237,6 @@ def run():
   print(f"Error messages logged in {logfile_path}. "
         "Top 10 lines are as follows:")
   os.system(f'head -n 10 {logfile_path}')
-  print('\n' * num_process)
 
 
 if __name__ == '__main__':

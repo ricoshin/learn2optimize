@@ -8,7 +8,6 @@ from os import path
 import _pickle as pickle
 import numpy as np
 import scipy.io as sio
-from torch.utils.data import Dataset, dataset
 from tqdm import tqdm
 
 
@@ -22,19 +21,21 @@ def scandir(dir):
 
 class Metadata(object):
   def __init__(self, **kwargs):
-    # must_have_keys = [
-    #   'classes', 'class_to_idx', 'idx_to_class', 'idx_to_samples']
-    # assert all([k in kwargs.keys() for k in must_have_keys])
     self.dnames = []
     self._add_metadata(**kwargs)
 
-    # self.classes = classes
-    # self.class_to_idx = class_to_idx
-    # self.idx_to_class = idx_to_class
-    # self.idx_to_samples = idx_to_samples
-
   def __len__(self):
-    return len(self.classes)
+    if hasattr(self, 'classes'):
+      return len(self.classes)
+    else:
+      return 0
+
+  @property
+  def class_sizes(self):
+    if hasattr(self, 'idx_to_samples'):
+      return {k: len(v) for k, v in self.idx_to_samples.items()}
+    else:
+      return 0
 
   def __eq__(self, other):
     return set(self.classes) == set(other.classes)
@@ -43,7 +44,6 @@ class Metadata(object):
     return self.merge([self, other])
 
   def _add_metadata(self, **kwargs):
-    import pdb; pdb.set_trace()
     for name, data in kwargs.items():
       setattr(self, name, data)
       self.dnames.append(name)
@@ -71,8 +71,16 @@ class Metadata(object):
     self._change_dname(from_to)
     self._add_metadata(kwargs)
 
+  def _cumulative_n_samples(self, idx_to_samples):
+    cumsum_list, cumsum = [], 0
+    for idx, samples in meta.idx_to_samples.items():
+      cumsum += len(samples)
+      cumsum_list.append(cumsum)
+    return cumsum_list
+
   def relative_index(self, rel_indices):
     assert isinstance(rel_indices, (tuple, list))
+    import pdb; pdb.set_trace()
     abs_indices = list(self.idx_to_samples.keys())
     indices = [abs_indices[rel_idx] for rel_idx in rel_indices]
     classes = [self.idx_to_class[idx] for idx in indices]
@@ -81,6 +89,13 @@ class Metadata(object):
     idx_to_samples = odict({idx: self.idx_to_samples[idx] for idx in indices})
     return Metadata(
         classes, self.class_to_idx, self.idx_to_class, idx_to_samples)
+
+  def idx_to_bin_fname(self, idx):
+    if hasattr(self, 'idx_to_wnid'):
+      fname = self.idx_to_wnid[idx] + '.pt'
+    elif hasattr(self, 'idx_to_class'):
+      fanme = self.idx_to_class[idx] + '.pt'
+    return fname
 
   @classmethod
   def merge(cls, others):
@@ -101,33 +116,30 @@ class Metadata(object):
     return cls(classes, class_to_idx, idx_to_class, idx_to_samples)
 
   @classmethod
-  def get_filepath(cls, root, postfix=''):
-    return path.normpath(path.join(
-      root, f"{'_'.join(['meta', postfix])}.pickle"))
+  def get_filepath(cls, root):
+    return path.normpath(path.join(root, 'meta.pickle'))
 
   @classmethod
-  def is_loadable(cls, root, name):
-    return path.exists(cls.get_filepath(root, name))
+  def is_loadable(cls, root):
+    return path.exists(cls.get_filepath(root))
 
   @classmethod
-  def load(cls, root, name):
-    filepath = cls.get_filepath(root, name)
+  def load(cls, root):
+    filepath = cls.get_filepath(root)
     with open(filepath, 'rb') as f:
-      meta_data = pickle.load(f)
+      meta_data = cls(**pickle.load(f))
     print(f'Loaded preprocessed dataset dictionaries: {filepath}')
     return meta_data
 
-  def save(self, root, name):
-    filepath = self.get_filepath(root, name)
+  def save(self, root):
+    filepath = self.get_filepath(root)
     with open(filepath, 'wb') as f:
-      pickle.dump(self, f)
+      pickle.dump({n: getattr(self, n) for n in self.dnames}, f)
     print(f'Saved processed dataset dictionaries: {filepath}')
 
   @classmethod
   def new(cls, *args):
-    import pdb; pdb.set_trace()
-    print('a')
-    return cls(cls._template_base(args))
+    return cls(**cls._template_base(*args))
 
   @classmethod
   def _template_base(cls, classes, class_to_idx, idx_to_class, idx_to_samples):
@@ -147,18 +159,25 @@ class Metadata(object):
         'idx_to_class': 'idx_to_wnid',
     }
     self._change_dname(from_to)
-    self._add_metadata(self._template_imagenet(
-      classes, class_to_wnid, wnid_to_class))
+    self._add_metadata(**self._template_imagenet(
+        classes, class_to_wnid, wnid_to_class))
     return self
 
   @staticmethod
-  def load_or_make(meta_dir, name, remake=False, *args, **kwargs):
-    import pdb; pdb.set_trace()
-    if Metadata.is_loadable(meta_dir, name) and not remake:
-      metadata = Metadata.load(meta_dir, name)
+  def load_or_make(data_dir, meta_dir=None, remake=False,
+                   *args, **kwargs):
+    # remake = True
+
+    if meta_dir is None:
+      meta_dir = data_dir
+    if Metadata.is_loadable(meta_dir) and not remake:
+
+      metadata = Metadata.load(meta_dir)
     else:
-      metadata = Metadata.make(*args, **kwargs)
-      metadata.save(meta_dir, name)
+      if Metadata.is_loadable(meta_dir) and remake:
+        print("Enforced to rebuild meta data.")
+      metadata = Metadata.make(data_dir, *args, **kwargs)
+      metadata.save(meta_dir)
     return metadata
 
   @classmethod
@@ -166,7 +185,6 @@ class Metadata(object):
            is_valid_file=None, imagenet_devkit_dir=None):
 
     print("Generating metadata..")
-    import pdb; pdb.set_trace()
     data_dir = path.expanduser(data_dir)
     if not ((extensions is None) ^ (is_valid_file is None)):
       raise ValueError("Both extensions and is_valid_file cannot be None "
@@ -190,7 +208,7 @@ class Metadata(object):
 
     if imagenet_devkit_dir:
       metadata.to_imagenet(
-        *cls.scan_imagenet_devkit(data_dir, imagenet_devkit_dir))
+          *cls.scan_imagenet_devkit(data_dir, imagenet_devkit_dir))
 
     return metadata
 
@@ -204,16 +222,15 @@ class Metadata(object):
     """
     subdirs = visible_subdirs if visible_subdirs else scandir(data_dir)
     classes_subdirs = []
-    scan_pbar = tqdm(subdirs)
-    for subdir in scan_pbar:
+    for subdir in subdirs:
       subdir = path.join(data_dir, subdir)
-      scan_pbar.set_description(f'Scanning subdir: {subdir}')
       classes = scandir(subdir)
       # deterministic shuffle to maintain consistency in data splits
       #   between multiple runs
       classes.sort()
       random.Random(1234).shuffle(classes)
       classes_subdirs.append(classes)
+    print(f'Scanned sub-dirs: {subdirs}')
     any_classes = classes_subdirs[0]
     if not all([any_classes == classes_subdirs[i]
                 for i in range(len(classes_subdirs))]):
@@ -232,7 +249,10 @@ class Metadata(object):
     """
     subdirs = visible_subdirs if visible_subdirs else scandir(data_dir)
     idx_to_samples = odict()  # the order must be preserved!
-    for class_, idx in tqdm(class_to_idx.items()):
+    desc = 'Scanning files'
+    pbar = tqdm(class_to_idx.items(), desc=desc)
+    for class_, idx in pbar:
+      pbar.set_description(desc + f" in {class_}")
       samples = []
       for subdir in subdirs:
         dir = path.join(data_dir, subdir, class_)
@@ -242,7 +262,7 @@ class Metadata(object):
           for fname in sorted(fnames):
             fpath = path.join(base, fname)
             if is_valid_file(fpath):
-              samples.append((path, idx))
+              samples.append((fpath, idx))
       idx_to_samples[idx] = samples
     return idx_to_samples
 
@@ -270,66 +290,12 @@ class Metadata(object):
     return classes, wnid_to_class, class_to_wnid, val_wnids
 
 
-class ConcatDatasetFolder(dataset.ConcatDataset):
-  """Dataset to concatenate multiple 'DatasetFolder's"""
-
-  def __init__(self, datasets):
-    super(ConcatDatasetFolder, self).__init__(datasets)
-    # if not all([isinstance(dataset, DatasetFolder) for dataset in datasets]):
-    #   raise TypeError('All the datasets have to be DatasetFolders.')
-    # assert all([others[0] == dataset.meta for dataset in datasets])
-    self.meta = Metadata.merge([dset.meta for dset in self.datasets])
-
-
-class SubsetClass(Dataset):
-  def __init__(self, dataset, idx=None, load_all_at_once=True, debug=False):
-    self.valid_dataset(dataset)
-    self.dataset = dataset
-
-    if idx is None:
-      self.indices = list(range(len(dataset)))
-      self.meta = dataset.meta
-    else:
-      prev = 0
-      self.indices = []
-      self.idxx = []
-      self.meta = dataset.meta.relative_index(idx)
-
-      for k, v in self.meta.idx_to_samples.items():
-        curr = prev + len(v)
-        self.indices.extend(list(range(prev, curr)))
-        self.idxx.append(list(range(prev, curr)))
-        # import pdb; pdb.set_trace()
-        prev = curr
-
-      if debug:
-        pdb.set_trace()
-
-  def __getitem__(self, idx):
-    return self.dataset[self.indices[idx]]
-
-  def __len__(self):
-    return len(self.indices)
-
-  @staticmethod
-  def valid_dataset(dataset):
-    assert isinstance(dataset, Dataset)
-    if not (hasattr(dataset, 'meta') and isinstance(dataset.meta, Metadata)):
-      pdb.set_trace()
-      raise Exception("Dataset should have attributes 'meta', instance of "
-                      "datasets.dataset_helper.Metadata.")
-
-  @classmethod
-  def random_sample(cls, dataset, num):
-    cls.valid_dataset(dataset)
-    sampled_idx = np.random.choice(
-        len(dataset.meta.classes), num, replace=False)
-    return cls(dataset, sampled_idx.tolist(), debug=False)
-
-  @classmethod
-  def split(cls, dataset, ratio):
-    cls.valid_dataset(dataset)
-    n_classes = len(dataset.meta.classes)
-    idx = list(range(n_classes))
-    thres = int(n_classes * ratio)
-    return cls(dataset, idx[:thres]), cls(dataset, idx[thres:])
+# class ConcatDatasetFolder(dataset.ConcatDataset):
+#   """Dataset to concatenate multiple 'DatasetFolder's"""
+#
+#   def __init__(self, datasets):
+#     super(ConcatDatasetFolder, self).__init__(datasets)
+#     # if not all([isinstance(dataset, DatasetFolder) for dataset in datasets]):
+#     #   raise TypeError('All the datasets have to be DatasetFolders.')
+#     # assert all([others[0] == dataset.meta for dataset in datasets])
+#     self.meta = Metadata.merge([dset.meta for dset in self.datasets])

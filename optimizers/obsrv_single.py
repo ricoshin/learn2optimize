@@ -67,6 +67,7 @@ class Optimizer(OptimizerBase):
 
       with WalltimeChecker(walltime):
         model_train = C(model_cls(params.detach()))
+  
         train_nll, train_acc = model_train(*data['in_train'].load())
         train_nll.backward()
 
