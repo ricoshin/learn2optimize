@@ -67,8 +67,8 @@ class Optimizer(OptimizerBase):
 
       with WalltimeChecker(walltime):
         model_train = C(model_cls(params.detach()))
-  
-        train_nll, train_acc = model_train(*data['in_train'].load())
+        data_ = data['in_train'].load()
+        train_nll, train_acc = model_train(*data_)
         train_nll.backward()
 
         g = model_train.params.grad.flat.detach()
@@ -101,7 +101,7 @@ class Optimizer(OptimizerBase):
         if debug_2: pdb.set_trace()
 
         if mode == 'train':
-          unroll_losses += test_nll  + test_kld
+          unroll_losses += test_nll # + test_kld
           if iter % unroll == 0:
             meta_optim.zero_grad()
             unroll_losses.backward()

@@ -158,8 +158,8 @@ def train_neural(name, save_dir, data_cls, model_cls, optim_module,
 
     result_final_mean = result_final.mean()
     result_all_mean = result_all.mean().w_postfix('mean')
-    last_valid_loss = result_final_mean['loss_mean']
-    last_valid_acc = result_final_mean['acc_mean']
+    last_valid_loss = result_final_mean['final_loss_mean']
+    last_valid_acc = result_final_mean['final_acc_mean']
 
     # Learning rate scheduling
     if lr_scheduling: # and last_valid < 0.5:
@@ -269,7 +269,7 @@ def test_neural(name, save_dir, learned_params, data_cls, model_cls,
 def test_normal(name, save_dir, data_cls, model_cls, optim_cls, optim_args,
                 n_test, iter_test):
   """function for test of static optimizers."""
-  
+
   data_cls = _get_attr_by_name(data_cls)
   model_cls = _get_attr_by_name(model_cls)
   optim_cls = _get_attr_by_name(optim_cls)
@@ -322,8 +322,8 @@ def test_normal(name, save_dir, data_cls, model_cls, optim_cls, optim_args,
     result_final.append(final_inner_test(model, data['in_test'], mode='test'))
 
     result_final_mean = result_final.mean()
-    last_test_loss = result_final_mean['loss_mean']
-    last_test_acc = result_final_mean['acc_mean']
+    last_test_loss = result_final_mean['final_loss_mean']
+    last_test_acc = result_final_mean['final_acc_mean']
     if last_test_loss < best_test_loss:
       best_test_loss = last_test_loss
       best_test_acc = last_test_acc

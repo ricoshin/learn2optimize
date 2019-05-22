@@ -79,7 +79,7 @@ class ImageNetData:
       - inner-test data(35% for each class)
   """
 
-  def __init__(self, batch_size=64, fixed=False):
+  def __init__(self, batch_size=256, fixed=False):
     self.fixed = fixed
     self.batch_size = batch_size
     path = '/v9/whshin/imagenet_resized_32_32'

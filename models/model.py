@@ -17,7 +17,7 @@ C = utils.getCudaManager('default')
 
 class Model(nn.Module):
   """Target model(optimizee) class."""
-  def __init__(self, params=None, dataset='imagenet', type='linear'):
+  def __init__(self, params=None, dataset='imagenet', type='conv'):
     super().__init__()
     assert dataset in ['mnist', 'imagenet']
     assert type in ['linear', 'conv']
@@ -202,7 +202,9 @@ class Model(nn.Module):
 
     for layer in self.layers:
       inp = layer(inp)
-    inp = F.log_softmax(inp, dim=1).squeeze()
+
+    inp = F.log_softmax(inp, dim=1)
+    inp = inp.view(inp.size()[:2])
 
     if out is not None:
       out = C(out)

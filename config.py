@@ -51,7 +51,7 @@ _neural_optimizers_mnist = odict({
     # },
 
     'Proposed': {
-        'train_args': odict(n_epoch=50, n_train=20, n_valid=10, iter_train=500,
+        'train_args': odict(n_epoch=50, n_train=20, n_valid=10, iter_train=1000,
                             iter_valid=2500, unroll=20, lr=1.0),
     }, # SGD: 1.0 / Adam: ?
 })
@@ -125,23 +125,23 @@ _normal_optimizers = odict({
 """NOTE: n_valid here is not for an actual inner-level held-out development set.
   It just means n sampling of mini-set from inner-test."""
 _common_test_args_debug = odict(n_test=5, iter_test=5)
-_common_test_args = odict(n_test=10, iter_test=5000)
+_common_test_args = odict(n_test=10, iter_test=10000)
 # _common_test_args = odict(n_test=2, iter_test=5)
 
 ################################################################################
 
-#train_optimizers = []
+train_optimizers = []
 #train_optimizers = ['RNN-base']
-train_optimizers = ['Proposed']
+# train_optimizers = ['Proposed']
 #train_optimizers = ['Proposed']
 # train_optimizers = ['RNN-base', 'Proposed', 'Proposed']
 # test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM', 'RNN-base', 'Proposed')
 # test_optimizers = ['ADAM']
 #test_optimizers = ['RNN-base']
-test_optimizers = ['Proposed']
+# test_optimizers = ['Proposed']
 #test_optimizers = ['Proposed']
 # test_optimizers = ['RNN-base','Proposed', 'ADAM']
-# test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM', 'Proposed')
+test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM')
 # train_optimizers = ()
 # test_optimizers = ('SGD',)
 #test_optimizers = ('SGD', 'RMSprop', 'NAG', 'ADAM')
@@ -159,6 +159,8 @@ def _get_problem(problem):
 def _get_neural_optimizers(problem, names=None):
   if names:
     train_optimizers = names  # overwrite if names are passed
+  else:
+    train_optimizers = []
 
   neural_optimizers = _neural_optimizers[problem]
   neural_optimizers_ = {}

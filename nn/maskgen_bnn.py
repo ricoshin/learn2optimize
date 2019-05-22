@@ -27,7 +27,7 @@ class FeatureGenerator(nn.Module):
     Outputs: feature for each coordinates
   """
 
-  def __init__(self, hidden_sz=32, batch_std_norm=False, n_timecode=3,
+  def __init__(self, hidden_sz=40, batch_std_norm=False, n_timecode=3,
                b1=[0.0, 0.5, 0.9, 0.99, 0.999],
                b2=[0.5, 0.9, 0.99, 0.999, 0.9999],
                drop_rate=0.0):
