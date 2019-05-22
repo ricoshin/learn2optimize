@@ -116,7 +116,7 @@ class ImageNetData:
     fixed = fixed if fixed is not None else self.fixed
     if fixed and self.meta_valid:
       return self.meta_valid
-    m_valid_sampled = self.m_valid_d.class_sample(n_sample)
+    m_valid_sampled = self.m_valid_d.class_sample(n_sample, preload=True)
     inner_train, inner_test = m_valid_sampled.intra_class_split(ratio, True)
     self.meta_valid['in_train'] = IterDataLoader.from_dataset(
         inner_train, self.batch_size)
@@ -128,7 +128,7 @@ class ImageNetData:
     fixed = fixed if fixed is not None else self.fixed
     if fixed and self.meta_test:
       return self.meta_test
-    m_test_sampled = self.m_test_d.class_sample(n_sample)
+    m_test_sampled = self.m_test_d.class_sample(n_sample, preload=True)
     inner_train, inner_test = m_test_sampled.intra_class_split(ratio, True)
     self.meta_test['in_train'] = IterDataLoader.from_dataset(
         inner_train, self.batch_size)
