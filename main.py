@@ -16,8 +16,9 @@ logger = logging.getLogger('main')
 C = utils.getCudaManager('default')
 
 parser = argparse.ArgumentParser(description='Pytorch implementation of L2L')
-parser.add_argument('--problem', type=str, default='imagenet',
-                    choices=['debug', 'quadratic', 'mnist', 'imagenet'],
+parser.add_argument('--problem', type=str, default='omniglot',
+                    choices=[
+                      'debug', 'quadratic', 'mnist', 'imagenet', 'omniglot'],
                     help='problem for the optimizee to solve')
 # parser.add_argument('--optimizer', type=str, default='lstm',
 #                     help='type of neural optimizer')
@@ -39,8 +40,14 @@ parser.add_argument('--retest_all', action='store_true',
                     help='all the optimizers will be forcibly retested.')
 parser.add_argument('--volatile', action='store_true',
                     help='supress saving fuctions')
-parser.add_argument('--meta_optim', type=str, default='SGD')
-parser.add_argument('--lr', type=float, default=1.0)
+parser.add_argument('--meta_optim', type=str, default='adam')
+parser.add_argument('--lr', type=float, default=0.001)
+parser.add_argument('--mask_lr', type=float, default=0.0,
+                     help='seperable lr for mask parameters. '
+                     'if 0.0 use the same argument lr as lr')
+parser.add_argument('--wd', type=float, default=1e-5)
+parser.add_argument('--inner_lr', type=float, default=0.1)
+parser.add_argument('--inner_wd', type=float, default=0.001)
 parser.add_argument('--train_optim', nargs='*', type=str,
                     default=[])
                     # default=['obsrv_single'])
@@ -48,14 +55,27 @@ parser.add_argument('--test_optim', nargs='*', type=str,
                     default=[])
 parser.add_argument('--no_mask', action='store_true')
 parser.add_argument('--k_obsrv', type=int, default=10)
+parser.add_argument('--mask_mode', type=str, default='unstructured',
+                    choices=['no_mask', 'structured', 'unstructured'])
+parser.add_argument('--data_mode', type=str, default='in_test',
+                    choices=['in_train', 'in_test'])
+
 
 def main():
   args = parser.parse_args()
   # add arguments that will be used for meta training.
-  train_args = ['meta_optim', 'lr', 'no_mask', 'k_obsrv']
-  test_args = ['no_mask', 'k_obsrv']
-  train_args = {k: v for k, v in vars(args).items() if k in train_args}
-  test_args = {k: v for k, v in vars(args).items() if k in test_args}
+  # train_args = [
+  #   'meta_optim', 'lr', 'no_mask', 'k_obsrv',
+  #   'mask_mode', 'data_mode',
+  #   ]
+
+  # test_args = [
+  #   'no_mask', 'k_obsrv',
+  #   'mask_mode',
+  #   ]
+  # train_args = {k: v for k, v in vars(args).items() if k in train_args}
+
+  # test_args = {k: v for k, v in vars(args).items() if k in test_args}
   # set CUDA
   args.cuda = not args.cpu and torch.cuda.is_available()
   C.set_cuda(args.cuda)
@@ -65,7 +85,8 @@ def main():
     raise Exception(f'{load_dir} does NOT exist!')
   # set save dir: saving functions will be suppressed if save_dir is None
   args.result_dir = None if args.volatile else args.result_dir
-  save_dir = utils.prepare_dir(args.problem, args.result_dir, args.save_dir)
+  args.save_dir = utils.prepare_dir(
+    args.problem, args.result_dir, args.save_dir)
   if not args.test_optim:
     args.test_optim = args.train_optim
     print('Test optimizers are not specified.\n'
@@ -75,8 +96,8 @@ def main():
   print(f'Problem: {args.problem}')
   cfg = Config(getConfig(args))
   cfg.update_from_parsed_args(args)
-  cfg.save(save_dir)
-  #import pdb; pdb.set_trace()
+  cfg.save(args.save_dir)
+
   problem = cfg.problem.dict
   neural_optimizers = cfg.neural_optimizers.dict
   normal_optimizers = cfg.normal_optimizers.dict
@@ -93,10 +114,11 @@ def main():
       params[name] = OptimizerParams.load(name, load_dir).save(name, save_dir)
     else:
       print(f"\nTraining neural optimizer: {name}")
+
       kwargs = neural_optimizers[name]['train_args']
-      kwargs.update(cfg.args.get_by_names(train_args))
+      # kwargs.update(cfg.args.get_by_names(train_args))
       # print(f"Module name: {kwargs['optim_module']}")
-      params[name] = train_neural(name, save_dir, **problem, **kwargs)
+      params[name] = train_neural(name, cfg)
   ##############################################################################
   print('\n\n\nMeta-testing..')
   results = {}
@@ -108,17 +130,18 @@ def main():
     else:
       if name in normal_optimizers:
         print(f'\nOptimizing with static optimizer: {name}')
-        kwargs = normal_optimizers[name]
-        result = test_normal(name, save_dir, **problem, **kwargs)
+        # kwargs = normal_optimizers[name]
+        result = test_normal(name, cfg)
         lr_list = [1.0, 0.3, 0.1, 0.03, 0.01, 0.003, 0.001, 0.0003, 0.0001]
-        #best_loss, best_lr = find_best_lr(name, save_dir, lr_list, **problem, **kwargs)
+        # best_loss, best_lr = find_best_lr(name, save_dir, lr_list, **problem, **kwargs)
         results[name] = result
       elif name in neural_optimizers:
         print(f'\n\nOptimizing with learned optimizer: {name}')
-        kwargs = neural_optimizers[name]['test_args']
-        kwargs.update(cfg.args.get_by_names(test_args))
+
+        # kwargs = neural_optimizers[name]['test_args']
+        # kwargs.update(cfg.args.get_by_names(test_args))
         # print(f"Module name: {kwargs['optim_module']}")
-        result = test_neural(name, save_dir, params[name], **problem, **kwargs)
+        result = test_neural(name, cfg, params[name])
         results[name] = result
 
   ##############################################################################

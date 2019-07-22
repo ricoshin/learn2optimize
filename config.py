@@ -13,6 +13,7 @@ _problems = {
     'quadratic': odict(data_cls='QuadraticData', model_cls='Model'),
     'mnist': odict(data_cls='MNISTData', model_cls='Model'),
     'imagenet': odict(data_cls='ImageNetData', model_cls='Model'),
+    'omniglot': odict(data_cls='OmniglotData', model_cls='Model'),
 }
 
 ################################################################################
@@ -50,10 +51,18 @@ _neural_optimizers_mnist = odict({
     #                         iter_valid=5, unroll=20, lr=0.01),
     # },
 
+    # 'Proposed': {
+    #     'train_args': odict(n_epoch=50, n_train=20, n_valid=10, iter_train=1000,
+    #  # SGD: 1.0 / Adam: ?                       iter_valid=2500, unroll=20, lr=1.0),
+
     'Proposed': {
-        'train_args': odict(n_epoch=50, n_train=20, n_valid=10, iter_train=1000,
-                            iter_valid=2500, unroll=20, lr=1.0),
-    }, # SGD: 1.0 / Adam: ?
+        'train_args': odict(n_epoch=50, n_train=20, n_valid=5, iter_train=2000,
+                            iter_valid=5000, unroll=20, lr=1.0),
+    },
+    # 'Proposed': {
+    #     'train_args': odict(n_epoch=1, n_train=1, n_valid=1, iter_train=40,
+    #                         iter_valid=40, unroll=20, lr=1.0),
+    # },
 })
 
 _neural_optimizers = odict({
@@ -61,6 +70,7 @@ _neural_optimizers = odict({
     'quadratic': _neural_optimizers_quadratic,
     'mnist': _neural_optimizers_mnist,
     'imagenet': _neural_optimizers_mnist, # Fix later
+    'omniglot': _neural_optimizers_mnist, # Fix later
 })
 
 # _common_neural_args = {
@@ -72,7 +82,7 @@ _neural_optimizers = odict({
 
 _neural_optimizers_group = {
   'RNN-base': ('neural_base'),
-  'Proposed': ('obsrv_single', 'obsrv_multi'),
+  'Proposed': ('obsrv_single', 'obsrv_multi', 'mask_only'),
 }
 
 ################################################################################
@@ -120,13 +130,14 @@ _normal_optimizers = odict({
   'quadratic': _normal_optimizers_quadratic,
   'mnist': _normal_optimizers_mnist,
   'imagenet': _normal_optimizers_mnist,  # Fix later
+  'omniglot': _normal_optimizers_mnist,  # Fix later
 })
 
 """NOTE: n_valid here is not for an actual inner-level held-out development set.
   It just means n sampling of mini-set from inner-test."""
 _common_test_args_debug = odict(n_test=5, iter_test=5)
-_common_test_args = odict(n_test=10, iter_test=10000)
-# _common_test_args = odict(n_test=2, iter_test=5)
+_common_test_args = odict(n_test=10, iter_test=5000)
+# _common_test_args = odict(n_test=2, iter_test=20)
 
 ################################################################################
 
@@ -207,6 +218,7 @@ def _get_normal_optimizers(problem):
   return CONFIG['normal_optimizers']
 
 def _get_test_optimizers(names=None):
+  global test_optimizers
   if names:
     test_optimizers = names  # overwrite if names are passed
   if 'test_optimizers' not in CONFIG:
@@ -252,9 +264,12 @@ def getConfig(args):
 class Config(object):
   save_filename = 'config.json'
   def __init__(self, dict_=None):
-    assert isinstance(dict_, dict)
+    # assert isinstance(dict_, dict)
     if dict_ is not None:
       self._nested_update(dict_)
+
+  def __getitem__(self, key):
+    return getattr(self, key)
 
   @classmethod
   def load(cls, load_dir):
@@ -298,9 +313,22 @@ class Config(object):
         out_dict[k] = v
     return out_dict
 
-  def update(self, dict):
+  def update(self, cfg):
+    if isinstance(cfg, Config):
+      dict_ = cfg.dict
+    # import pdb; pdb.set_trace()
     assert isinstance(dict_, dict)
-    self._nested_update(dict)
+    self._nested_update(dict_)
+
+
+  @classmethod
+  def merge(cls, cfgs):
+    assert isinstance(cfgs, (list, tuple))
+    cfg_new = cls()
+    # import pdb; pdb.set_trace()
+    for cfg in cfgs:
+      cfg_new.update(cfg)
+    return cfg_new
 
   def _nested_update(self, dict_):
     assert isinstance(dict_, dict)

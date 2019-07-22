@@ -520,8 +520,8 @@ class ParamsFlattener(object):
     as_dict=True):
     if overall:
       on = sum([v for v in (self > threshold).sum().float().unflat.values()])
-      all = sum([v for v in self.tsize(0).values()])
-      sparsity = {new_prefix + '_' + 'overall': on / all}
+      # all = sum([v for v in self.tsize(0).values()])
+      sparsity = {new_prefix + '_' + 'overall': on / len(self)}
       if not as_dict:
         sparsity = ParamsFlattener(sparsity)
     else:

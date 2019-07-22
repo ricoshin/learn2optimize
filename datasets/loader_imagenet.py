@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
+from datasets.datasets import IterDataLoader
 from datasets.imagenet import ImageNet
 from models.meprop import SBLinear, UnifiedSBLinear
 from models.model_helpers import ParamsFlattener
@@ -14,56 +15,6 @@ from torchvision import datasets, transforms
 from utils import utils
 
 C = utils.getCudaManager('default')
-
-
-class IterDataLoader(object):
-  """Just a simple custom dataloader to load data whenever neccessary
-  without forcibley using iterative loops.
-  """
-
-  def __init__(self, dataset, batch_size, sampler=None):
-    self.dataset = dataset
-    self.sampler = sampler
-    self.dataloader = data.DataLoader(
-        dataset, batch_size, sampler)
-    self.iterator = iter(self.dataloader)
-
-  def __len__(self):
-    return len(self.dataloader)
-
-  def load(self, eternal=True):
-    if eternal:
-      try:
-        return next(self.iterator)
-      except StopIteration:
-        self.iterator = iter(self.dataloader)
-        return next(self.iterator)
-      except AttributeError:
-        import pdb
-        pdb.set_trace()
-        print('a')
-    else:
-      return next(self.iterator)
-
-  @property
-  def batch_size(self):
-    return self.dataloader.batch_size
-
-  @property
-  def full_size(self):
-    return self.batch_size * len(self)
-
-  def new_batchsize(self):
-    self.dataloader
-
-  @classmethod
-  def from_dataset(cls, dataset, batch_size, rand_with_replace=True):
-    if rand_with_replace:
-      sampler = data.sampler.RandomSampler(dataset, replacement=True)
-    else:
-      sampler = None
-    # loader = data.DataLoader(dataset, batch_size=batch_size, sampler=sampler)
-    return cls(dataset, batch_size, sampler)
 
 
 class ImageNetData:

@@ -17,9 +17,9 @@ C = utils.getCudaManager('default')
 
 class Model(nn.Module):
   """Target model(optimizee) class."""
-  def __init__(self, params=None, dataset='imagenet', type='conv'):
+  def __init__(self, params=None, dataset='omniglot', type='conv'):
     super().__init__()
-    assert dataset in ['mnist', 'imagenet']
+    assert dataset in ['mnist', 'imagenet', 'omniglot']
     assert type in ['linear', 'conv']
     self.type = type
     if params is not None:
@@ -42,26 +42,32 @@ class Model(nn.Module):
     if dataset == 'mnist':
       in_c = 1
       in_hw = 28
+      out_sz = 10
     elif dataset == 'imagenet':
       in_c = 3
       in_hw = 32
+      out_sz = 10
+    elif dataset == 'omniglot':
+      in_c = 1
+      in_hw = 64
+      out_sz = 10
     else:
       raise Exception(f'Unknown dataset: {dataset}')
-    return in_c, in_hw
+    return in_c, in_hw, out_sz
 
   def stack_layers(self, type, dataset, channels=None):
     """Layer stacking function (just for MNIST).
     FIX LATER: full argument accessibility."""
     assert channels is None or isinstance(channels, (list, tuple))
-    in_c, in_hw = self._adapt_dataset(dataset)
+    in_c, in_hw, out_sz = self._adapt_dataset(dataset)
     if type == 'linear':
       if channels is None:
         channels = [500]
-      layers = self._stack_linears(in_hw*in_hw*in_c, 10, channels)
+      layers = self._stack_linears(in_hw*in_hw*in_c, out_sz, channels)
     elif type == 'conv':
       if channels is None:
         channels = [32, 64, 128]
-      layers = self._stack_convs(in_hw, in_c, 10, channels)
+      layers = self._stack_convs(in_hw, in_c, out_sz, channels)
     else:
       raise Exception(f'Unknown type: {type}')
     return layers
@@ -210,6 +216,7 @@ class Model(nn.Module):
       out = C(out)
       loss = self.loss(inp, out)
       acc = (inp.argmax(dim=1) == out).float().mean()
+
     else:
       loss = None
       acc = None
